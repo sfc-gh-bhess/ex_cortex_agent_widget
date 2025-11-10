@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { 
   fetchAgentsConfiguration
 } from '../services/snowflakeAgentsApi';
+import { useConfig } from '../contexts/ConfigContext';
 
 // Keep backward compatibility with existing AgentConfig interface
 export interface AgentConfig {
@@ -25,6 +26,7 @@ export interface AgentsConfiguration {
 // Removed fallback configuration - show actual errors instead
 
 export const useAgentConfig = () => {
+  const { backendUrl, onError } = useConfig();
   const [config, setConfig] = useState<AgentsConfiguration | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +39,7 @@ export const useAgentConfig = () => {
     try {
       // Fetch live agents from Snowflake (already fully processed)
       // This will throw an error with HTTP status code if it fails
-      const snowflakeConfig = await fetchAgentsConfiguration();
+      const snowflakeConfig = await fetchAgentsConfiguration(backendUrl);
       
       setConfig(snowflakeConfig as AgentsConfiguration);
       setError(null);
@@ -49,10 +51,13 @@ export const useAgentConfig = () => {
       setError(errorMessage);
       setIsConnected(false);
       setConfig(null);
+      if (onError) {
+        onError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [backendUrl, onError]);
 
   useEffect(() => {
     loadAgentConfig();

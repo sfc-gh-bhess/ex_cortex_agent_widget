@@ -3,7 +3,6 @@
  * Central export point for all chat-related components
  */
 
-export { ChatHeader } from './ChatHeader';
 export { ChatInput } from './ChatInput';
 export { ChatMessage } from './ChatMessage';
 export { ChartsSection } from './ChartsSection';

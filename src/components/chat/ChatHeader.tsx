@@ -97,7 +97,7 @@ export const ChatHeader: React.FC = () => {
                   >
                     {HEADER_TEXT.SUBTITLE_MIDDLE}
                   </Link>
-                  {' | '}{HEADER_TEXT.SUBTITLE_SUFFIX}{' '}
+                  {/* {' | '}{HEADER_TEXT.SUBTITLE_SUFFIX}{' '}
                   <Link 
                     href={HEADER_TEXT.SUBTITLE_LINK}
                     target="_blank"
@@ -113,7 +113,7 @@ export const ChatHeader: React.FC = () => {
                     }}
                   >
                     {HEADER_TEXT.SUBTITLE_DEVELOPER}
-                  </Link>
+                  </Link> */}
                 </Typography>
               </Box>
             </Box>

@@ -6,13 +6,14 @@
 import { useState, useCallback, useRef } from 'react';
 import { ChatMessage } from '../types/chat';
 import { ChartContent } from '../types/chart';
-import { config } from '../config/env';
+import { useConfig } from '../contexts/ConfigContext';
 import { extractSqlQuery, extractVerificationInfo } from '../utils/chatUtils';
 import { ERROR_TEXT, API_DEFAULTS, getApiStatusMessage } from '../constants/textConstants';
 
 const MAX_MESSAGES = 100;
 
 export const useChatMessages = (selectedAgent: string) => {
+  const { backendUrl, onError } = useConfig();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -76,7 +77,7 @@ export const useChatMessages = (selectedAgent: string) => {
       };
 
       // Call backend proxy instead of Snowflake directly (secure: PAT never exposed to browser)
-      const backendEndpoint = `${config.backendUrl}/api/agents/${encodeURIComponent(selectedAgent)}/messages`;
+      const backendEndpoint = `${backendUrl}/api/agents/${encodeURIComponent(selectedAgent)}/messages`;
       
       const response = await fetch(backendEndpoint, {
         method: 'POST',
@@ -360,7 +361,7 @@ export const useChatMessages = (selectedAgent: string) => {
              error.message.includes('fetch') || 
              error.message.includes('Failed to fetch'))) {
           // Network error during streaming - format with ERROR_PREFIX and tips
-          errorMessage = `${ERROR_TEXT.ERROR_PREFIX}\n\nConnection lost during streaming.\n\n💡 Tip: The backend server at ${config.backendUrl} stopped or crashed, network connection was interrupted, or the backend server is no longer running.`;
+          errorMessage = `${ERROR_TEXT.ERROR_PREFIX}\n\nConnection lost during streaming.\n\n💡 Tip: The backend server at ${backendUrl} stopped or crashed, network connection was interrupted, or the backend server is no longer running.`;
         } else {
           // Use fullMessage property to preserve \n\n (Error.message normalizes newlines)
           errorMessage = error instanceof Error ? ((error as any).fullMessage || error.message) : ERROR_TEXT.UNKNOWN_ERROR;
@@ -378,13 +379,16 @@ export const useChatMessages = (selectedAgent: string) => {
             }
           : msg
         ));
+        if (onError && typeof errorMessage === 'string') {
+          onError(errorMessage);
+        }
       }
       return { success: false, error };
     } finally {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [isLoading, selectedAgent]);
+  }, [isLoading, selectedAgent, backendUrl, onError]);
 
   const cancelRequest = useCallback(() => {
     if (abortControllerRef.current && isLoading) {

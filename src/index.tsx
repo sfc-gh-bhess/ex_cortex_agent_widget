@@ -5,9 +5,10 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import SimpleChatInterface from './components/Main';
-import { ThemeContextProvider } from './contexts/ThemeContext';
-import { CssBaseline } from '@mui/material';
+import { SimpleChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+import { Box, Typography } from '@mui/material';
+import { ChatHeader } from './components/chat/ChatHeader';
+import { ThemeContextProvider, useThemeContext } from './contexts/ThemeContext';
 import { config } from './config/env';
 
 /**
@@ -86,7 +87,7 @@ const validateEnvironment = () => {
   try {
     // This will throw if required environment variables are missing
     // We need to actually access the config to trigger validation
-    const testConfig = config.account;
+    const testConfig = config.backendUrl;
     return !!testConfig;
   } catch (error) {
     
@@ -128,22 +129,14 @@ const validateEnvironment = () => {
             marginBottom: '1rem'
           }}>
             <p style={{ marginBottom: '0.5rem', fontWeight: '600' }}>
-              Required Environment Variables:
+              Required Environment Variable:
             </p>
             <ul style={{ paddingLeft: '1rem', lineHeight: '1.6' }}>
-              <li>REACT_APP_ACCOUNT</li>
-              <li>REACT_APP_HOST</li>
-              <li>REACT_APP_WAREHOUSE</li>
-              <li>REACT_APP_DEMO_USER</li>
-              <li>REACT_APP_DEMO_USER_ROLE</li>
-              <li>REACT_APP_PAT</li>
-              <li>REACT_APP_AGENT_ENDPOINT</li>
-              <li>REACT_APP_DATABASE</li>
-              <li>REACT_APP_SCHEMA</li>
+              <li>REACT_APP_BACKEND_URL</li>
             </ul>
           </div>
           <p style={{ fontSize: '0.875rem', opacity: 0.8 }}>
-            Please create a .env file in the project root with all required variables.
+            Please create a .env file in the project root with the backend URL (e.g., http://localhost:3001).
           </p>
         </div>
       </div>
@@ -151,6 +144,55 @@ const validateEnvironment = () => {
     
     return false;
   }
+};
+
+/**
+ * App Component with Theme Integration
+ */
+const App: React.FC = () => {
+  const { isDarkMode } = useThemeContext();
+  
+  return (
+    <ChatThemeProvider theme={{ mode: isDarkMode ? 'dark' : 'light' }}>
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        minHeight: '100vh', 
+        bgcolor: 'background.default' 
+      }}>
+        {/* Application-specific header */}
+        <ChatHeader />
+        
+        {/* Main content area */}
+        <Box sx={{ flex: 1, p: 3 }}>
+          <Typography variant="h4" gutterBottom>
+            Welcome to Custom Cortex Agents
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Click the chat button in the bottom right corner to start a conversation with our AI assistant.
+          </Typography>
+        </Box>
+        
+        {/* Floating chat overlay */}
+        <SimpleChatInterface 
+          backendUrl={config.backendUrl}
+          onError={(error) => console.error('Chat error:', error)}
+          overlay={{
+            enabled: true,
+            defaultWidth: '70%',
+            defaultHeight: '70vh',
+            buttonPosition: 'bottom-right',
+            initialState: 'minimized'
+          }}
+          displayConfig={{
+            showThinking: false,
+            showSqlQueries: false,
+            showAnnotations: false
+          }}
+        />
+      </Box>
+    </ChatThemeProvider>
+  );
 };
 
 /**
@@ -169,8 +211,7 @@ const bootstrap = () => {
     <React.StrictMode>
       <ErrorBoundary>
         <ThemeContextProvider>
-          <CssBaseline />
-          <SimpleChatInterface />
+          <App />
         </ThemeContextProvider>
       </ErrorBoundary>
     </React.StrictMode>

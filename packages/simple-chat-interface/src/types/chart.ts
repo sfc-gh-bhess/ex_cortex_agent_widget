@@ -80,3 +80,4 @@ export const CHART_COLORS = [
   '#795548', // Brown
   '#607D8B'  // Blue grey
 ];
+

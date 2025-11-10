@@ -1,5 +1,5 @@
 {
-  "name": "dash-desai",
+  "name": "cortex-chat-example",
   "version": "1.0.0",
   "description": "Custom application for the data agents powered by Snowflake Cortex Agents REST API built with TypeScript and Material-UI.",
   "private": true,
@@ -9,6 +9,7 @@
   },
   "homepage": ".",
   "dependencies": {
+    "@chat-overlay/simple-chat-interface": "file:./packages/simple-chat-interface",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.2",

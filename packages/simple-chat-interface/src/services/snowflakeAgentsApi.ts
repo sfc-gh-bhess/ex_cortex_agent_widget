@@ -9,7 +9,6 @@
  * Reference: https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api
  */
 
-import { config } from '../config/env';
 import { ERROR_TEXT } from '../constants/textConstants';
 
 /**
@@ -117,8 +116,8 @@ export interface SnowflakeAgentsConfiguration {
 /**
  * Fetches the list of Cortex Agents from our secure backend proxy
  */
-export const fetchCortexAgents = async (): Promise<SnowflakeCortexAgent[]> => {
-  const endpoint = `${config.backendUrl}/api/agents`;
+export const fetchCortexAgents = async (backendUrl: string): Promise<SnowflakeCortexAgent[]> => {
+  const endpoint = `${backendUrl}/api/agents`;
   
   
   try {
@@ -180,7 +179,7 @@ export const fetchCortexAgents = async (): Promise<SnowflakeCortexAgent[]> => {
   } catch (error) {
     // Check if this is a network error (fetch failed, DNS, connection refused, etc.)
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      const errorMessage = `${ERROR_TEXT.ERROR_PREFIX}\n\nFailed to connect to the backend server.\n\n💡 Tip: The backend server at ${config.backendUrl} is not running or not accessible, there's a typo in SNOWFLAKE_HOST in your backend .env file, or network/firewall is blocking the connection.`;
+      const errorMessage = `${ERROR_TEXT.ERROR_PREFIX}\n\nFailed to connect to the backend server.\n\n💡 Tip: The backend server at ${backendUrl} is not running or not accessible, there's a typo in SNOWFLAKE_HOST in your backend .env file, or network/firewall is blocking the connection.`;
       const networkError = new Error(errorMessage);
       (networkError as any).fullMessage = errorMessage;
       throw networkError;
@@ -194,9 +193,9 @@ export const fetchCortexAgents = async (): Promise<SnowflakeCortexAgent[]> => {
  * Fetches detailed information for a specific Cortex Agent using our secure backend proxy
  * This includes the full agent_spec with starter questions
  */
-export const describeCortexAgent = async (agentName: string): Promise<SnowflakeAgentDetails> => {
+export const describeCortexAgent = async (backendUrl: string, agentName: string): Promise<SnowflakeAgentDetails> => {
   // Use agent name as-is for API compatibility (Snowflake is case-sensitive)
-  const endpoint = `${config.backendUrl}/api/agents/${encodeURIComponent(agentName)}`;
+  const endpoint = `${backendUrl}/api/agents/${encodeURIComponent(agentName)}`;
   
   
   try {
@@ -265,7 +264,7 @@ export const describeCortexAgent = async (agentName: string): Promise<SnowflakeA
   } catch (error) {
     // Check if this is a network error (fetch failed, DNS, connection refused, etc.)
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      const errorMessage = `${ERROR_TEXT.ERROR_PREFIX}\n\nFailed to connect to the backend server.\n\n💡 Tip: The backend server at ${config.backendUrl} is not running or not accessible, there's a typo in SNOWFLAKE_HOST in your backend .env file, or network/firewall is blocking the connection.`;
+      const errorMessage = `${ERROR_TEXT.ERROR_PREFIX}\n\nFailed to connect to the backend server.\n\n💡 Tip: The backend server at ${backendUrl} is not running or not accessible, there's a typo in SNOWFLAKE_HOST in your backend .env file, or network/firewall is blocking the connection.`;
       const networkError = new Error(errorMessage);
       (networkError as any).fullMessage = errorMessage;
       throw networkError;
@@ -348,10 +347,10 @@ export const mapSnowflakeAgentToConfig = (agent: SnowflakeCortexAgent): Snowflak
 /**
  * Fetches and transforms Cortex Agents into our configuration format
  */
-export const fetchAgentsConfiguration = async (): Promise<SnowflakeAgentsConfiguration> => {
+export const fetchAgentsConfiguration = async (backendUrl: string): Promise<SnowflakeAgentsConfiguration> => {
   try {
     // Step 1: Fetch list of agents from Snowflake
-    const snowflakeAgents = await fetchCortexAgents();
+    const snowflakeAgents = await fetchCortexAgents(backendUrl);
     
     
     // Step 2: For each agent, call Describe API to get detailed specs with starter questions
@@ -364,7 +363,7 @@ export const fetchAgentsConfiguration = async (): Promise<SnowflakeAgentsConfigu
       
       try {
         // Fetch detailed agent specs including starter questions
-        const agentDetails = await describeCortexAgent(agentName);
+        const agentDetails = await describeCortexAgent(backendUrl, agentName);
         
         // Combine the basic agent info with detailed specs
         const enhancedAgent = {
@@ -429,9 +428,9 @@ export const fetchAgentsConfiguration = async (): Promise<SnowflakeAgentsConfigu
 /**
  * Health check for the Cortex Agents API
  */
-export const testCortexAgentsConnection = async (): Promise<boolean> => {
+export const testCortexAgentsConnection = async (backendUrl: string): Promise<boolean> => {
   try {
-    await fetchCortexAgents();
+    await fetchCortexAgents(backendUrl);
     return true;
   } catch (error) {
     return false;

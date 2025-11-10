@@ -40,6 +40,9 @@ interface ChatMessageProps {
   onToggleCharts: (messageId: string) => void;
   onToggleAnnotations: (messageId: string) => void;
   onResendMessage?: (text: string) => void;
+  showThinking?: boolean;
+  showSqlQueries?: boolean;
+  showAnnotations?: boolean;
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -52,7 +55,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   onToggleSqlQueries,
   onToggleCharts,
   onToggleAnnotations,
-  onResendMessage
+  onResendMessage,
+  showThinking = false,
+  showSqlQueries = false,
+  showAnnotations = false
 }) => {
   const theme = useTheme();
   const [copySuccess, setCopySuccess] = useState(false);
@@ -119,7 +125,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           '&:last-child': { pb: message.sender === 'user' ? 2 : 3 } 
         }}>
           {/* Assistant Thinking Steps */}
-          {message.sender === 'assistant' && (
+          {showThinking && message.sender === 'assistant' && (
             <ThinkingSteps
               messageId={message.id}
               thinkingTexts={message.thinkingTexts}
@@ -132,7 +138,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           )}
 
           {/* SQL Queries Section - Only show when completed */}
-          {message.sender === 'assistant' && 
+          {showSqlQueries &&
+           message.sender === 'assistant' && 
            message.sqlQueries && 
            message.sqlQueries.length > 0 && 
            message.status === 'sent' && 
@@ -197,7 +204,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 <MarkdownFormatter content={message.text} theme={theme} />
                 
                 {/* Annotations Section - Display at bottom of response text */}
-                {message.status === 'sent' && 
+                {showAnnotations &&
+                 message.status === 'sent' && 
                  !message.isStreaming && 
                  message.annotations && 
                  message.annotations.length > 0 && (
