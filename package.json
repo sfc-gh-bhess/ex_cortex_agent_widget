@@ -53,7 +53,9 @@
     "build:analyze": "npm run build && npx serve -s build",
     "test": "craco test",
     "eject": "react-scripts eject",
-    "deploy": "./deploy-to-dreamhost.sh"
+    "deploy": "./deploy-to-dreamhost.sh",
+    "demo:pat": "concurrently \"AUTH_MODE=PAT npm run start:server\" \"REACT_APP_AUTH_MODE=PAT npm start\"",
+    "demo:oauth": "concurrently \"AUTH_MODE=OAUTH npm run start:server\" \"REACT_APP_AUTH_MODE=OAUTH npm start\""
   },
   "eslintConfig": {
     "extends": [
