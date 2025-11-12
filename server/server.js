@@ -15,12 +15,18 @@
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
+const crypto = require('crypto');
 require('dotenv').config();
 const { HTTP_STATUS, ERROR_MESSAGES, CONFIG } = require('./constants');
 
 const app = express();
 // Render uses PORT, local dev uses SERVER_PORT
 const PORT = process.env.PORT || process.env.SERVER_PORT || CONFIG.DEFAULT_PORT;
+
+// Authentication mode: 'PAT' or 'OAUTH'
+const AUTH_MODE = process.env.AUTH_MODE || 'OAUTH';
+console.log(`🔐 Authentication mode: ${AUTH_MODE}`);
 
 // ============================================================================
 // Configuration & Validation
@@ -30,21 +36,31 @@ const PORT = process.env.PORT || process.env.SERVER_PORT || CONFIG.DEFAULT_PORT;
  * Validate required environment variables
  */
 const validateEnvironment = () => {
+  // Always required
   const required = [
     'SNOWFLAKE_HOST',
-    'SNOWFLAKE_PAT',
     'SNOWFLAKE_DATABASE',
     'SNOWFLAKE_SCHEMA'
   ];
 
-  const missing = required.filter(key => !process.env[key]);
-  
-  if (missing.length > 0) {
-    console.error('❌ Missing required environment variables:', missing.join(', '));
+  // Add mode-specific requirements
+  if (AUTH_MODE === 'PAT') {
+    required.push('SNOWFLAKE_PAT');
+  } else if (AUTH_MODE === 'OAUTH') {
+    required.push('OAUTH_TOKEN_URL', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_REDIRECT_URI');
+  } else {
+    console.error('❌ Invalid AUTH_MODE. Must be "PAT" or "OAUTH"');
     process.exit(1);
   }
 
-  console.log('✅ All required environment variables are set');
+  const missing = required.filter(key => !process.env[key]);
+  
+  if (missing.length > 0) {
+    console.error(`❌ Missing required environment variables for ${AUTH_MODE} mode:`, missing.join(', '));
+    process.exit(1);
+  }
+
+  console.log(`✅ All required environment variables for ${AUTH_MODE} mode are set`);
 };
 
 validateEnvironment();
@@ -52,9 +68,69 @@ validateEnvironment();
 // Snowflake configuration from environment
 const SNOWFLAKE_CONFIG = {
   host: process.env.SNOWFLAKE_HOST,
-  pat: process.env.SNOWFLAKE_PAT,
   database: process.env.SNOWFLAKE_DATABASE,
   schema: process.env.SNOWFLAKE_SCHEMA
+};
+
+// OAuth configuration from environment
+const OAUTH_CONFIG = {
+  tokenUrl: process.env.OAUTH_TOKEN_URL,
+  clientId: process.env.OAUTH_CLIENT_ID,
+  clientSecret: process.env.OAUTH_CLIENT_SECRET,
+  redirectUri: process.env.OAUTH_REDIRECT_URI
+};
+
+// ============================================================================
+// Token Store and Session Management
+// ============================================================================
+
+/**
+ * In-memory token store
+ * Maps session ID to user token data
+ * Structure: { sessionId: { accessToken, refreshToken, expiresAt, userId } }
+ */
+const tokenStore = new Map();
+
+/**
+ * Generate a secure session ID
+ */
+const generateSessionId = () => {
+  return crypto.randomBytes(32).toString('hex');
+};
+
+/**
+ * Store tokens for a session
+ */
+const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = 'unknown') => {
+  // Calculate expiry time (current time + expires_in seconds)
+  const expiresAt = Date.now() + (expiresIn * 1000);
+  
+  tokenStore.set(sessionId, {
+    accessToken,
+    refreshToken,
+    expiresAt,
+    userId
+  });
+  
+  console.log(`🔐 Stored tokens for session: ${sessionId.substring(0, 8)}... (expires in ${expiresIn}s)`);
+};
+
+/**
+ * Get tokens for a session
+ */
+const getTokens = (sessionId) => {
+  return tokenStore.get(sessionId);
+};
+
+/**
+ * Delete tokens for a session
+ */
+const deleteTokens = (sessionId) => {
+  const existed = tokenStore.delete(sessionId);
+  if (existed) {
+    console.log(`🗑️  Deleted tokens for session: ${sessionId.substring(0, 8)}...`);
+  }
+  return existed;
 };
 
 // ============================================================================
@@ -93,6 +169,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
+app.use(cookieParser());
 
 /**
  * Rate limiting to prevent abuse
@@ -123,14 +200,33 @@ app.use((req, res, next) => {
 
 /**
  * Get authentication headers for Snowflake API
+ * Adapts based on AUTH_MODE
  */
-const getSnowflakeAuthHeaders = () => ({
-  'X-Snowflake-Authorization-Token-Type': 'PROGRAMMATIC_ACCESS_TOKEN',
-  'Authorization': `Bearer ${SNOWFLAKE_CONFIG.pat}`,
-  'Content-Type': 'application/json',
-  'Accept': 'application/json',
-  'User-Agent': 'DashAI-Proxy/1.0.0'
-});
+const getSnowflakeAuthHeaders = (req) => {
+  const baseHeaders = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+  
+  if (req.authMode === 'PAT') {
+    // PAT mode: Use PAT from environment
+    return {
+      ...baseHeaders,
+      'Authorization': `Bearer ${process.env.SNOWFLAKE_PAT}`
+    };
+  }
+  
+  // OAUTH mode: Use session-based access token
+  const tokens = req.tokens;
+  if (!tokens) {
+    throw new Error('No valid session found');
+  }
+  
+  return {
+    ...baseHeaders,
+    'Authorization': `Bearer ${tokens.accessToken}`
+  };
+};
 
 /**
  * Sanitize error messages to prevent information leakage
@@ -165,6 +261,119 @@ const validateAgentName = (agentName) => {
 };
 
 // ============================================================================
+// Authentication Middleware
+// ============================================================================
+
+/**
+ * Authentication middleware - adapts based on AUTH_MODE
+ */
+const authenticate = (req, res, next) => {
+  if (AUTH_MODE === 'PAT') {
+    // PAT mode: No session required, will use PAT from env
+    req.authMode = 'PAT';
+    return next();
+  }
+  
+  // OAUTH mode: Require valid session
+  const sessionId = req.cookies.session_id;
+  
+  if (!sessionId) {
+    return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+      error: ERROR_MESSAGES.NOT_AUTHENTICATED,
+      message: 'No session found. Please log in.'
+    });
+  }
+  
+  const tokens = getTokens(sessionId);
+  
+  if (!tokens) {
+    return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+      error: ERROR_MESSAGES.NOT_AUTHENTICATED,
+      message: 'Invalid or expired session. Please log in again.'
+    });
+  }
+  
+  req.sessionId = sessionId;
+  req.tokens = tokens;
+  req.authMode = 'OAUTH';
+  next();
+};
+
+/**
+ * Middleware to refresh access token if needed (within 5 minutes of expiry)
+ * Only applies in OAUTH mode
+ */
+const refreshTokenIfNeeded = async (req, res, next) => {
+  // Skip in PAT mode
+  if (req.authMode === 'PAT') {
+    return next();
+  }
+  
+  const sessionId = req.sessionId;
+  const tokens = req.tokens;
+  
+  if (!tokens) {
+    return next();
+  }
+  
+  // Check if token expires within 5 minutes
+  const fiveMinutesFromNow = Date.now() + (5 * 60 * 1000);
+  
+  if (tokens.expiresAt <= fiveMinutesFromNow) {
+    console.log(`🔄 Access token expiring soon, refreshing for session: ${sessionId.substring(0, 8)}...`);
+    
+    try {
+      // Call OAuth token endpoint with refresh_token grant
+      const response = await fetch(OAUTH_CONFIG.tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: tokens.refreshToken,
+          client_id: OAUTH_CONFIG.clientId,
+          client_secret: OAUTH_CONFIG.clientSecret,
+        }),
+      });
+      
+      if (!response.ok) {
+        console.error('❌ Token refresh failed:', response.status);
+        // Clear the session and return 401
+        deleteTokens(sessionId);
+        res.clearCookie('session_id');
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({ 
+          error: 'Token refresh failed',
+          code: 'REFRESH_FAILED'
+        });
+      }
+      
+      const data = await response.json();
+      
+      // Update stored tokens with new access token
+      storeTokens(
+        sessionId,
+        data.access_token,
+        data.refresh_token || tokens.refreshToken, // Some providers don't return a new refresh token
+        data.expires_in,
+        tokens.userId
+      );
+      
+      // Update req.tokens so the current request uses the new token
+      req.tokens = getTokens(sessionId);
+      
+      console.log('✅ Access token refreshed successfully');
+    } catch (error) {
+      console.error('❌ Error refreshing token:', error.message);
+      // Don't block the request, let it proceed with the old token
+      // If the old token is expired, Snowflake will return 401
+    }
+  }
+  
+  next();
+};
+
+// ============================================================================
 // API Routes
 // ============================================================================
 
@@ -179,11 +388,161 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ============================================================================
+// Authentication Endpoints
+// ============================================================================
+
+if (AUTH_MODE === 'OAUTH') {
+  /**
+   * OAuth token exchange endpoint
+   * POST /auth/exchange
+   */
+  app.post('/auth/exchange', async (req, res) => {
+  try {
+    const { code, state } = req.body;
+    
+    if (!code) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        error: 'Authorization code is required' 
+      });
+    }
+    
+    console.log('🔐 Exchanging authorization code for tokens...');
+    
+    // Exchange authorization code for access token
+    // Use redirect URI from environment (must match what was used in the authorization request)
+    const response = await fetch(OAUTH_CONFIG.tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: OAUTH_CONFIG.redirectUri,
+        client_id: OAUTH_CONFIG.clientId,
+        client_secret: OAUTH_CONFIG.clientSecret,
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Token exchange failed:', response.status, errorText);
+      return res.status(response.status).json({ 
+        error: 'Token exchange failed',
+        details: errorText
+      });
+    }
+    
+    const tokenData = await response.json();
+    
+    // Generate session ID
+    const sessionId = generateSessionId();
+    
+    // Store tokens in memory
+    storeTokens(
+      sessionId,
+      tokenData.access_token,
+      tokenData.refresh_token,
+      tokenData.expires_in,
+      tokenData.user_id || 'unknown'
+    );
+    
+    // Set secure httpOnly cookie
+    // For localhost development with different ports (3000 frontend, 3001 backend),
+    // we need to set the domain explicitly to 'localhost' (without port)
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      path: '/',
+      // Set domain to 'localhost' in development to share across ports
+      domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost'
+    };
+    
+    res.cookie('session_id', sessionId, cookieOptions);
+    
+    console.log('✅ OAuth token exchange successful');
+    
+    res.json({ 
+      success: true,
+      expiresIn: tokenData.expires_in
+    });
+  } catch (error) {
+    console.error('❌ Error during token exchange:', error.message);
+    res.status(500).json({ error: sanitizeError(error) });
+  }
+});
+
+/**
+ * Logout endpoint
+ * POST /auth/logout
+ */
+app.post('/auth/logout', (req, res) => {
+  const sessionId = req.cookies.session_id;
+  
+  if (sessionId) {
+    deleteTokens(sessionId);
+  }
+  
+  res.clearCookie('session_id');
+  
+  console.log('👋 User logged out');
+  
+  res.json({ success: true });
+});
+
+  /**
+   * Check authentication status
+   * GET /auth/status
+   */
+  app.get('/auth/status', (req, res) => {
+    const sessionId = req.cookies.session_id;
+    
+    if (!sessionId) {
+      return res.json({ authenticated: false });
+    }
+    
+    const tokens = getTokens(sessionId);
+    
+    if (!tokens) {
+      res.clearCookie('session_id');
+      return res.json({ authenticated: false });
+    }
+    
+    // Check if token is expired
+    if (tokens.expiresAt <= Date.now()) {
+      deleteTokens(sessionId);
+      res.clearCookie('session_id');
+      return res.json({ authenticated: false });
+    }
+    
+    res.json({ 
+      authenticated: true,
+      userId: tokens.userId,
+      expiresAt: tokens.expiresAt
+    });
+  });
+} else {
+  // PAT mode: always authenticated
+  app.get('/auth/status', (req, res) => {
+    res.json({ 
+      authenticated: true, 
+      mode: 'PAT' 
+    });
+  });
+}
+
+// ============================================================================
+// Cortex Agent API Endpoints
+// ============================================================================
+
 /**
  * List all Cortex Agents
  * GET /api/agents
  */
-app.get('/api/agents', async (req, res) => {
+app.get('/api/agents', authenticate, refreshTokenIfNeeded, async (req, res) => {
   try {
     const endpoint = `https://${SNOWFLAKE_CONFIG.host}/api/v2/databases/${SNOWFLAKE_CONFIG.database}/schemas/${SNOWFLAKE_CONFIG.schema}/agents`;
     
@@ -191,11 +550,22 @@ app.get('/api/agents', async (req, res) => {
     
     const response = await fetch(endpoint, {
       method: 'GET',
-      headers: getSnowflakeAuthHeaders(),
+      headers: getSnowflakeAuthHeaders(req),
     });
 
     if (!response.ok) {
       const contentType = response.headers.get('content-type') || '';
+      
+      // Handle OAuth token rejection
+      if (response.status === HTTP_STATUS.UNAUTHORIZED) {
+        const errorParts = [
+          ERROR_MESSAGES.ERROR_PREFIX,
+          `${ERROR_MESSAGES.HTTP_ERROR_STATUS} ${response.status} ${response.statusText}`,
+          '💡 Tip: OAuth token was rejected. Verify your Identity Provider is configured for Snowflake API access.'
+        ];
+        console.error('❌ Snowflake API error:', response.status);
+        return res.status(response.status).json({ errorParts });
+      }
       
       // Build error message as array of parts (preserves structure better than string with \n\n)
       const errorParts = [
@@ -258,7 +628,7 @@ app.get('/api/agents', async (req, res) => {
  * Get details for a specific Cortex Agent
  * GET /api/agents/:agentName
  */
-app.get('/api/agents/:agentName', async (req, res) => {
+app.get('/api/agents/:agentName', authenticate, refreshTokenIfNeeded, async (req, res) => {
   try {
     const { agentName } = req.params;
     
@@ -275,7 +645,7 @@ app.get('/api/agents/:agentName', async (req, res) => {
     
     const response = await fetch(endpoint, {
       method: 'GET',
-      headers: getSnowflakeAuthHeaders(),
+      headers: getSnowflakeAuthHeaders(req),
     });
 
     if (!response.ok) {
@@ -342,7 +712,7 @@ app.get('/api/agents/:agentName', async (req, res) => {
  * Send message to Cortex Agent (streaming endpoint)
  * POST /api/agents/:agentName/messages
  */
-app.post('/api/agents/:agentName/messages', async (req, res) => {
+app.post('/api/agents/:agentName/messages', authenticate, refreshTokenIfNeeded, async (req, res) => {
   try {
     const { agentName } = req.params;
     const requestBody = req.body;
@@ -366,7 +736,7 @@ app.post('/api/agents/:agentName/messages', async (req, res) => {
     // Make request to Snowflake Agent endpoint
     const response = await fetch(agentEndpoint, {
       method: 'POST',
-      headers: getSnowflakeAuthHeaders(),
+      headers: getSnowflakeAuthHeaders(req),
       body: JSON.stringify(requestBody),
     });
 

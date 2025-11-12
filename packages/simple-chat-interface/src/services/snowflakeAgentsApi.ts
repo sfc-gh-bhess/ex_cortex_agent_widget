@@ -133,6 +133,7 @@ export const fetchCortexAgents = async (backendUrl: string): Promise<SnowflakeCo
           'Accept': 'application/json',
         },
         signal: controller.signal,
+        credentials: 'include', // Include cookies for session-based authentication
       });
       
       clearTimeout(timeoutId);
@@ -211,6 +212,7 @@ export const describeCortexAgent = async (backendUrl: string, agentName: string)
           'Accept': 'application/json',
         },
         signal: controller.signal,
+        credentials: 'include', // Include cookies for session-based authentication
       });
       
       clearTimeout(timeoutId);

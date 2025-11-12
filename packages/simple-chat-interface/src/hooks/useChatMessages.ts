@@ -37,7 +37,7 @@ export const useChatMessages = (selectedAgent: string) => {
       timestamp: new Date(),
       status: 'thinking',
       isStreaming: true,
-      streamingStatus: undefined,
+      streamingStatus: 'Processing your request...',
       thinkingSteps: [],
       sqlQueries: [],
       timeline: [],
@@ -86,7 +86,8 @@ export const useChatMessages = (selectedAgent: string) => {
           'Accept': 'text/event-stream'
         },
         body: JSON.stringify(requestBody),
-        signal: abortController.signal
+        signal: abortController.signal,
+        credentials: 'include' // Include cookies for session-based authentication
       });
 
       if (!response.ok) {
@@ -170,6 +171,7 @@ export const useChatMessages = (selectedAgent: string) => {
                       }
                     : msg
                 ));
+
               } else if (currentEvent === 'response.tool_result') {
                 const toolStatus = API_DEFAULTS.PROCESSING_RESULTS;
                 const sqlQuery = extractSqlQuery(data);

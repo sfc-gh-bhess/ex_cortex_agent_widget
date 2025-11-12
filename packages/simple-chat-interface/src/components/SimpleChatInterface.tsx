@@ -261,14 +261,11 @@ const SimpleChatInterfaceInner: React.FC = () => {
         (message.sqlQueries && message.sqlQueries.length > 0)
       );
       const willShowText = message.text && message.text.trim().length > 0;
-      const willShowStatus = message.status === 'thinking' && message.isStreaming && (
-        (message.thinkingTexts && message.thinkingTexts.length > 0) ||
-        (message.sqlQueries && message.sqlQueries.length > 0) ||
-        (message.text && message.text.trim().length > 0)
-      );
+      // Show streaming assistant messages even if empty (to display status box)
+      const willShowStreaming = message.sender === 'assistant' && message.isStreaming;
       const willShowError = message.status === 'error' && message.error && message.error.trim().length > 0;
       
-      return willShowThinking || willShowText || willShowStatus || willShowError;
+      return willShowThinking || willShowText || willShowStreaming || willShowError;
     });
   }, [messages]);
 

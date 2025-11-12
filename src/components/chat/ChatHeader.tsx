@@ -4,11 +4,19 @@
  */
 
 import React from 'react';
-import { Box, Container, Paper, Typography, Link } from '@mui/material';
+import { Box, Container, Paper, Typography, Link, IconButton, Tooltip } from '@mui/material';
+import { Logout as LogoutIcon } from '@mui/icons-material';
 import { HEADER_TEXT } from '../../constants/textConstants';
 import { ThemeToggle } from '../ThemeToggle';
+import { useAuth } from '../../contexts/AuthContext';
 
 export const ChatHeader: React.FC = () => {
+  const { logout, authMode } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+  };
+
   return (
     <Paper
       elevation={0}
@@ -26,7 +34,7 @@ export const ChatHeader: React.FC = () => {
         <Container maxWidth="lg">
           <Box sx={{ py: 2, position: 'relative' }}>
             {/* Title */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1, pr: 7 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1, pr: 12 }}>
               <Box
                 component="img"
                 src={HEADER_TEXT.LOGO_PATH}
@@ -118,7 +126,7 @@ export const ChatHeader: React.FC = () => {
               </Box>
             </Box>
             
-            {/* Theme Toggle - Aligned with container edge */}
+            {/* Theme Toggle and Logout - Aligned with container edge */}
             <Box sx={{ 
               position: 'absolute', 
               top: 16, 
@@ -131,6 +139,23 @@ export const ChatHeader: React.FC = () => {
               }
             }}>
               <ThemeToggle />
+              {/* Only show logout button in OAUTH mode */}
+              {authMode === 'OAUTH' && (
+                <Tooltip title="Logout">
+                  <IconButton
+                    onClick={handleLogout}
+                    sx={{
+                      color: 'text.primary',
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                      },
+                    }}
+                    aria-label="logout"
+                  >
+                    <LogoutIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Box>
           </Box>
         </Container>

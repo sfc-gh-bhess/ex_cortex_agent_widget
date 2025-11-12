@@ -15,7 +15,8 @@ import {
   alpha,
   useTheme,
   IconButton,
-  Tooltip
+  Tooltip,
+  CircularProgress
 } from '@mui/material';
 import {
   ContentCopy as CopyIcon,
@@ -167,7 +168,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           )}
 
           {/* Progress Bar - Positioned After Last Accordion */}
-          {message.status === 'thinking' && message.sender === 'assistant' && (
+          {/* {message.status === 'thinking' && message.sender === 'assistant' && (
             <Box sx={{ mb: 2 }}>
               <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1 }}>
                 <Typography variant="caption" color="text.secondary">
@@ -183,6 +184,38 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 }} 
               />
             </Box>
+          )} */}
+          {/* Agent Status Box - Shows during streaming */}
+          {message.sender === 'assistant' && message.isStreaming && (
+            <Fade in={true}>
+              <Box 
+                sx={{ 
+                  mb: 2,
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: alpha(theme.palette.primary.main, 0.05),
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
+                }}
+              >
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <CircularProgress 
+                    size={20} 
+                    thickness={4}
+                    sx={{ color: theme.palette.primary.main }}
+                  />
+                  <Typography 
+                    variant="body2" 
+                    sx={{ 
+                      color: theme.palette.text.secondary,
+                      fontWeight: 500,
+                      flex: 1
+                    }}
+                  >
+                    {message.streamingStatus || 'Processing...'}
+                  </Typography>
+                </Stack>
+              </Box>
+            </Fade>
           )}
 
           {/* Message Text Content */}

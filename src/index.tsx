@@ -5,10 +5,14 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SimpleChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, CircularProgress, Container } from '@mui/material';
 import { ChatHeader } from './components/chat/ChatHeader';
 import { ThemeContextProvider, useThemeContext } from './contexts/ThemeContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { LoginPage } from './pages/LoginPage';
+import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { config } from './config/env';
 
 /**
@@ -147,9 +151,43 @@ const validateEnvironment = () => {
 };
 
 /**
- * App Component with Theme Integration
+ * Protected Route Component - Only accessible when authenticated
  */
-const App: React.FC = () => {
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        }}
+      >
+        <Container maxWidth="sm" sx={{ textAlign: 'center' }}>
+          <CircularProgress size={64} sx={{ mb: 3, color: 'white' }} />
+          <Typography variant="h6" sx={{ color: 'white' }}>
+            Loading...
+          </Typography>
+        </Container>
+      </Box>
+    );
+  }
+  
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+  
+  return <>{children}</>;
+};
+
+/**
+ * Main App Content - Only shown when authenticated
+ */
+const MainAppContent: React.FC = () => {
   const { isDarkMode } = useThemeContext();
   
   return (
@@ -192,6 +230,35 @@ const App: React.FC = () => {
         />
       </Box>
     </ChatThemeProvider>
+  );
+};
+
+/**
+ * App Component with Routing and Authentication
+ */
+const App: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          {/* OAuth callback route - publicly accessible */}
+          <Route path="/auth/callback" element={<OAuthCallbackPage />} />
+          
+          {/* Main app route - requires authentication */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <MainAppContent />
+              </ProtectedRoute>
+            }
+          />
+          
+          {/* Catch all - redirect to home */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 };
 

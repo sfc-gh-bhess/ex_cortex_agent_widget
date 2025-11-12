@@ -319,43 +319,45 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 
                 {/* New Chat Button */}
                 <Tooltip title={CHAT_TEXT.INPUT.NEW_CHAT_TOOLTIP} arrow>
-                  <IconButton
-                    onClick={onNewChat}
-                    disabled={isLoading}
-                    size="small"
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 1.5,
-                      backgroundColor: (theme) => theme.palette.mode === 'dark'
-                        ? alpha(theme.palette.grey[800], 0.6)
-                        : alpha(theme.palette.grey[100], 0.8),
-                      border: (theme) => theme.palette.mode === 'dark'
-                        ? `1px solid ${alpha(theme.palette.grey[600], 0.3)}`
-                        : `1px solid ${alpha(theme.palette.grey[300], 0.5)}`,
-                      color: 'primary.main',
-                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                      '&:hover': {
+                  <span>
+                    <IconButton
+                      onClick={onNewChat}
+                      disabled={isLoading}
+                      size="small"
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 1.5,
                         backgroundColor: (theme) => theme.palette.mode === 'dark'
-                          ? alpha(theme.palette.primary.main, 0.1)
-                          : alpha(theme.palette.primary.main, 0.05),
-                        borderColor: (theme) => alpha(theme.palette.primary.main, 0.5),
+                          ? alpha(theme.palette.grey[800], 0.6)
+                          : alpha(theme.palette.grey[100], 0.8),
+                        border: (theme) => theme.palette.mode === 'dark'
+                          ? `1px solid ${alpha(theme.palette.grey[600], 0.3)}`
+                          : `1px solid ${alpha(theme.palette.grey[300], 0.5)}`,
                         color: 'primary.main',
-                        transform: 'translateY(-1px)',
-                        boxShadow: (theme) => `0 4px 12px ${alpha(theme.palette.primary.main, 0.2)}`
-                      },
-                      '&:active': {
-                        transform: 'translateY(0px)'
-                      },
-                      '&:disabled': {
-                        color: 'action.disabled',
-                        backgroundColor: (theme) => alpha(theme.palette.action.disabled, 0.12),
-                        borderColor: (theme) => alpha(theme.palette.action.disabled, 0.12)
-                      }
-                    }}
-                  >
-                    <RefreshIcon />
-                  </IconButton>
+                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                        '&:hover': {
+                          backgroundColor: (theme) => theme.palette.mode === 'dark'
+                            ? alpha(theme.palette.primary.main, 0.1)
+                            : alpha(theme.palette.primary.main, 0.05),
+                          borderColor: (theme) => alpha(theme.palette.primary.main, 0.5),
+                          color: 'primary.main',
+                          transform: 'translateY(-1px)',
+                          boxShadow: (theme) => `0 4px 12px ${alpha(theme.palette.primary.main, 0.2)}`
+                        },
+                        '&:active': {
+                          transform: 'translateY(0px)'
+                        },
+                        '&:disabled': {
+                          color: 'action.disabled',
+                          backgroundColor: (theme) => alpha(theme.palette.action.disabled, 0.12),
+                          borderColor: (theme) => alpha(theme.palette.action.disabled, 0.12)
+                        }
+                      }}
+                    >
+                      <RefreshIcon />
+                    </IconButton>
+                  </span>
                 </Tooltip>
               </Stack>
               
@@ -457,47 +459,49 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   title={isLoading ? CHAT_TEXT.INPUT.STOP_TOOLTIP : CHAT_TEXT.INPUT.SEND_TOOLTIP} 
                   arrow
                 >
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    size="small"
-                    disabled={!isLoading && !inputText.trim()}
-                    sx={{ 
-                      minWidth: 'auto', 
-                      width: 48, 
-                      height: 40,
-                      p: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: 1.5,
-                      background: (theme) => isLoading 
-                        ? `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`
-                        : `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`,
-                      boxShadow: (theme) => isLoading
-                        ? `0 4px 16px ${alpha(theme.palette.primary.main, 0.4)}, 0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`
-                        : `0 4px 16px ${alpha(theme.palette.primary.main, 0.4)}, 0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`,
-                      '&:hover': {
+                  <span>
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      size="small"
+                      disabled={!isLoading && !inputText.trim()}
+                      sx={{ 
+                        minWidth: 'auto', 
+                        width: 48, 
+                        height: 40,
+                        p: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 1.5,
                         background: (theme) => isLoading 
-                          ? `linear-gradient(135deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})`
-                          : `linear-gradient(135deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})`,
-                        transform: 'translateY(-1px)',
+                          ? `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`
+                          : `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`,
                         boxShadow: (theme) => isLoading
-                          ? `0 6px 20px ${alpha(theme.palette.primary.main, 0.5)}, 0 3px 12px ${alpha(theme.palette.primary.main, 0.3)}`
-                          : `0 6px 20px ${alpha(theme.palette.primary.main, 0.5)}, 0 3px 12px ${alpha(theme.palette.primary.main, 0.3)}`
-                      },
-                      '&:active': {
-                        transform: 'translateY(0px)'
-                      },
-                      '&:disabled': {
-                        background: (theme) => alpha(theme.palette.action.disabled, 0.12),
-                        boxShadow: 'none'
-                      },
-                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-                    }}
-                  >
-                    {isLoading ? <StopIcon /> : <ArrowUpIcon />}
-                  </Button>
+                          ? `0 4px 16px ${alpha(theme.palette.primary.main, 0.4)}, 0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`
+                          : `0 4px 16px ${alpha(theme.palette.primary.main, 0.4)}, 0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`,
+                        '&:hover': {
+                          background: (theme) => isLoading 
+                            ? `linear-gradient(135deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})`
+                            : `linear-gradient(135deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})`,
+                          transform: 'translateY(-1px)',
+                          boxShadow: (theme) => isLoading
+                            ? `0 6px 20px ${alpha(theme.palette.primary.main, 0.5)}, 0 3px 12px ${alpha(theme.palette.primary.main, 0.3)}`
+                            : `0 6px 20px ${alpha(theme.palette.primary.main, 0.5)}, 0 3px 12px ${alpha(theme.palette.primary.main, 0.3)}`
+                        },
+                        '&:active': {
+                          transform: 'translateY(0px)'
+                        },
+                        '&:disabled': {
+                          background: (theme) => alpha(theme.palette.action.disabled, 0.12),
+                          boxShadow: 'none'
+                        },
+                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                    >
+                      {isLoading ? <StopIcon /> : <ArrowUpIcon />}
+                    </Button>
+                  </span>
                 </Tooltip>
               </Stack>
             </Stack>

@@ -75,3 +75,5 @@ Thumbs.db
 *.tsbuildinfo
 package-lock.json
 .DS_Store
+
+summary_docs/
