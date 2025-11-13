@@ -5,8 +5,16 @@
  */
 
 // Main Components
-export { SimpleChatInterface } from './components/SimpleChatInterface';
-export type { SimpleChatInterfaceProps, OverlayConfig, DisplayConfig } from './components/SimpleChatInterface';
+export { ChatInterface } from './components/ChatInterface';
+export type { ChatInterfaceProps } from './components/ChatInterface';
+
+export { InlineChatInterface } from './components/InlineChatInterface';
+export type { InlineChatInterfaceProps, DisplayConfig } from './components/InlineChatInterface';
+
+export { FloatingChatInterface } from './components/FloatingChatInterface';
+export type { FloatingChatInterfaceProps } from './components/FloatingChatInterface';
+
+// Theme Provider
 export { ChatThemeProvider } from './contexts/ChatThemeProvider';
 export type { ThemeConfig } from './contexts/ChatThemeProvider';
 
@@ -28,6 +36,6 @@ export type { ChatConfig } from './contexts/ConfigContext';
 // Theme
 export { createAppTheme } from './theme/theme';
 
-// Default export
-export { SimpleChatInterface as default } from './components/SimpleChatInterface';
+// Default export (most common use case)
+export { FloatingChatInterface as default } from './components/FloatingChatInterface';
 

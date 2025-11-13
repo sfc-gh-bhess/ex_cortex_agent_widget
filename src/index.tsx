@@ -6,7 +6,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { SimpleChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+import { FloatingChatInterface, ChatThemeProvider, InlineChatInterface } from '@chat-overlay/simple-chat-interface';
 import { Box, Typography, CircularProgress, Container } from '@mui/material';
 import { ChatHeader } from './components/chat/ChatHeader';
 import { ThemeContextProvider, useThemeContext } from './contexts/ThemeContext';
@@ -210,18 +210,15 @@ const MainAppContent: React.FC = () => {
             Click the chat button in the bottom right corner to start a conversation with our AI assistant.
           </Typography>
         </Box>
-        
+
         {/* Floating chat overlay */}
-        <SimpleChatInterface 
+        <FloatingChatInterface 
           backendUrl={config.backendUrl}
           onError={(error) => console.error('Chat error:', error)}
-          overlay={{
-            enabled: true,
-            defaultWidth: '70%',
-            defaultHeight: '70vh',
-            buttonPosition: 'bottom-right',
-            initialState: 'minimized'
-          }}
+          defaultWidth="70%"
+          defaultHeight="70vh"
+          buttonPosition="bottom-right"
+          initialState="minimized"
           displayConfig={{
             showThinking: false,
             showSqlQueries: false,

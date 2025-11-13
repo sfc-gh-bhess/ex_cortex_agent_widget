@@ -8,17 +8,44 @@ Embeddable chat interface component powered by Snowflake Cortex Agents REST API.
 npm install @chat-overlay/simple-chat-interface
 ```
 
+## Components
+
+This package provides three purpose-built components:
+
+- **`FloatingChatInterface`** - Floating button that expands to an overlay (most common use case)
+- **`InlineChatInterface`** - Inline/embedded chat interface for your page
+- **`ChatInterface`** - Low-level base component for advanced customization
+
 ## Quick Start
 
+### Floating Chat Button (Recommended)
+
 ```tsx
-import { SimpleChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
 
 function MyApp() {
   return (
     <ChatThemeProvider>
       <div>
         <h1>My Application</h1>
-        <SimpleChatInterface backendUrl="http://localhost:3001" />
+        <FloatingChatInterface backendUrl="http://localhost:3001" />
+      </div>
+    </ChatThemeProvider>
+  );
+}
+```
+
+### Inline Chat
+
+```tsx
+import { InlineChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+
+function MyApp() {
+  return (
+    <ChatThemeProvider>
+      <div>
+        <h1>My Application</h1>
+        <InlineChatInterface backendUrl="http://localhost:3001" />
       </div>
     </ChatThemeProvider>
   );
@@ -27,105 +54,69 @@ function MyApp() {
 
 ## Props
 
-### SimpleChatInterface
+### FloatingChatInterface
 
 | Prop | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `backendUrl` | `string` | Yes | - | URL of your backend proxy server that communicates with Snowflake |
-| `overlay` | `OverlayConfig` | No | - | Overlay/floating chat mode configuration |
-| `theme` | `ThemeConfig` | No | - | Custom theme configuration |
-| `initialAgent` | `string` | No | - | Initial agent to select (if not provided, first alphabetical agent is selected) |
+| `defaultWidth` | `string \| number` | No | `'70%'` | Default width when opened |
+| `defaultHeight` | `string \| number` | No | `'70vh'` | Default height when opened |
+| `buttonPosition` | `'bottom-right' \| 'bottom-left' \| 'top-right' \| 'top-left'` | No | `'bottom-right'` | Position of floating button |
+| `initialState` | `'minimized' \| 'expanded'` | No | `'minimized'` | Initial state |
+| `initialAgent` | `string` | No | - | Initial agent to select |
+| `onError` | `(error: string) => void` | No | - | Callback when an error occurs |
+| `displayConfig` | `DisplayConfig` | No | - | Configuration for optional sections |
+
+### InlineChatInterface
+
+| Prop | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `backendUrl` | `string` | Yes | - | URL of your backend proxy server |
+| `initialAgent` | `string` | No | - | Initial agent to select |
 | `onError` | `(error: string) => void` | No | - | Callback when an error occurs |
 | `className` | `string` | No | - | Custom CSS class |
 | `style` | `React.CSSProperties` | No | - | Custom inline styles |
+| `displayConfig` | `DisplayConfig` | No | - | Configuration for optional sections |
 
-### OverlayConfig
+### ChatInterface (Advanced)
 
-```typescript
-interface OverlayConfig {
-  enabled: boolean;                    // Enable overlay/floating mode
-  defaultWidth?: string | number;      // Default width when opened (default: '70%')
-  defaultHeight?: string | number;     // Default height when opened (default: '70vh')
-  buttonPosition?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';  // Position of floating button (default: 'bottom-right')
-  initialState?: 'minimized' | 'expanded';  // Initial state (default: 'minimized')
-}
-```
+| Prop | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `className` | `string` | No | - | Custom CSS class |
+| `style` | `React.CSSProperties` | No | - | Custom inline styles |
 
-### ThemeConfig
+**Note:** `ChatInterface` requires a `ConfigProvider` wrapper to function.
+
+### DisplayConfig
 
 ```typescript
-interface ThemeConfig {
-  primary?: string;    // Primary color (default: '#667eea')
-  secondary?: string;  // Secondary color (default: '#764ba2')
-  mode?: 'light' | 'dark';  // Theme mode (default: 'dark')
+interface DisplayConfig {
+  showThinking?: boolean;       // Show "Thinking & Planning" section (default: false)
+  showSqlQueries?: boolean;     // Show "SQL Queries Executed" section (default: false)
+  showAnnotations?: boolean;    // Show "Annotations" section (default: false)
 }
 ```
 
 ## Usage Examples
 
-### Basic Usage
+### Basic Floating Chat
 
 ```tsx
-import { SimpleChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
 
 function App() {
   return (
     <ChatThemeProvider>
-      <SimpleChatInterface backendUrl="http://localhost:3001" />
+      <FloatingChatInterface backendUrl="http://localhost:3001" />
     </ChatThemeProvider>
   );
 }
 ```
 
-### With Custom Theme
+### Floating Chat with Custom Configuration
 
 ```tsx
-import { SimpleChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
-
-function App() {
-  return (
-    <ChatThemeProvider>
-      <SimpleChatInterface 
-        backendUrl="http://localhost:3001"
-        theme={{
-          primary: '#1976d2',
-          secondary: '#dc004e',
-          mode: 'light'
-        }}
-      />
-    </ChatThemeProvider>
-  );
-}
-```
-
-### With Error Handling
-
-```tsx
-import { SimpleChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
-
-function App() {
-  const handleError = (error: string) => {
-    console.error('Chat error:', error);
-    // Handle error (show notification, log to service, etc.)
-  };
-
-  return (
-    <ChatThemeProvider>
-      <SimpleChatInterface 
-        backendUrl="http://localhost:3001"
-        onError={handleError}
-      />
-    </ChatThemeProvider>
-  );
-}
-```
-
-### Floating Overlay Mode (Recommended)
-
-Transform the chat into a floating widget with a minimizable button:
-
-```tsx
-import { SimpleChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
 
 function App() {
   return (
@@ -135,14 +126,16 @@ function App() {
         <p>Your main content here...</p>
         
         {/* Floating chat overlay */}
-        <SimpleChatInterface 
+        <FloatingChatInterface 
           backendUrl="http://localhost:3001"
-          overlay={{
-            enabled: true,
-            defaultWidth: '70%',
-            defaultHeight: '70vh',
-            buttonPosition: 'bottom-right',
-            initialState: 'minimized'
+          defaultWidth="70%"
+          defaultHeight="70vh"
+          buttonPosition="bottom-right"
+          initialState="minimized"
+          displayConfig={{
+            showThinking: false,
+            showSqlQueries: false,
+            showAnnotations: false
           }}
         />
       </div>
@@ -154,35 +147,103 @@ function App() {
 **Features:**
 - ✅ Minimized as a floating button by default
 - ✅ Opens as an overlay on top of your content
-- ✅ Resizable by dragging the corners
+- ✅ Resizable by dragging the top-left corner
 - ✅ Minimize button to collapse back to floating button
 - ✅ Configurable size and position
 
-### Overlay with Custom Size
+### Floating Chat with Custom Size
 
 ```tsx
-<SimpleChatInterface 
+<FloatingChatInterface 
   backendUrl="http://localhost:3001"
-  overlay={{
-    enabled: true,
-    defaultWidth: '500px',      // Fixed width
-    defaultHeight: '80vh',       // 80% of viewport height
-    buttonPosition: 'bottom-left',
-    initialState: 'minimized'
-  }}
+  defaultWidth="500px"      // Fixed width
+  defaultHeight="80vh"      // 80% of viewport height
+  buttonPosition="bottom-left"
 />
 ```
 
-### Overlay Starting Expanded
+### Floating Chat Starting Expanded
 
 ```tsx
-<SimpleChatInterface 
+<FloatingChatInterface 
   backendUrl="http://localhost:3001"
-  overlay={{
-    enabled: true,
-    initialState: 'expanded'    // Start with overlay open
-  }}
+  initialState="expanded"    // Start with overlay open
 />
+```
+
+### Inline Chat (Embedded)
+
+```tsx
+import { InlineChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+
+function App() {
+  return (
+    <ChatThemeProvider>
+      <div style={{ height: '80vh' }}>
+        <InlineChatInterface 
+          backendUrl="http://localhost:3001"
+          displayConfig={{
+            showThinking: true,
+            showSqlQueries: true,
+            showAnnotations: true
+          }}
+        />
+      </div>
+    </ChatThemeProvider>
+  );
+}
+```
+
+### With Error Handling
+
+```tsx
+import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+
+function App() {
+  const handleError = (error: string) => {
+    console.error('Chat error:', error);
+    // Handle error (show notification, log to service, etc.)
+  };
+
+  return (
+    <ChatThemeProvider>
+      <FloatingChatInterface 
+        backendUrl="http://localhost:3001"
+        onError={handleError}
+      />
+    </ChatThemeProvider>
+  );
+}
+```
+
+### Advanced: Custom Configuration with ChatInterface
+
+For advanced use cases where you need full control over the configuration:
+
+```tsx
+import { ChatInterface, ConfigProvider, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+
+function App() {
+  return (
+    <ChatThemeProvider>
+      <ConfigProvider 
+        config={{
+          backendUrl: 'http://localhost:3001',
+          onError: (error) => console.error(error),
+          displayConfig: {
+            showThinking: true,
+            showSqlQueries: true,
+            showAnnotations: true
+          }
+        }}
+      >
+        <div style={{ height: '100vh' }}>
+          <ChatInterface />
+        </div>
+      </ConfigProvider>
+    </ChatThemeProvider>
+  );
+}
 ```
 
 ### Within Existing MUI Theme
@@ -191,7 +252,7 @@ If you already have a Material-UI theme in your app, you can skip `ChatThemeProv
 
 ```tsx
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { SimpleChatInterface } from '@chat-overlay/simple-chat-interface';
+import { FloatingChatInterface } from '@chat-overlay/simple-chat-interface';
 
 const myTheme = createTheme({
   // Your existing theme configuration
@@ -200,7 +261,7 @@ const myTheme = createTheme({
 function App() {
   return (
     <ThemeProvider theme={myTheme}>
-      <SimpleChatInterface backendUrl="http://localhost:3001" />
+      <FloatingChatInterface backendUrl="http://localhost:3001" />
     </ThemeProvider>
   );
 }
@@ -266,6 +327,64 @@ Returns Server-Sent Events (SSE) stream with events like:
 - Voice input (speech recognition)
 - Responsive design
 - Full TypeScript support
+
+## Migration Guide
+
+If you were using `SimpleChatInterface` from a previous version, here's how to migrate:
+
+### From SimpleChatInterface (Overlay Mode)
+
+**Before:**
+```tsx
+<SimpleChatInterface 
+  backendUrl="http://localhost:3001"
+  overlay={{
+    enabled: true,
+    defaultWidth: '70%',
+    defaultHeight: '70vh',
+    buttonPosition: 'bottom-right',
+    initialState: 'minimized'
+  }}
+  displayConfig={{ showThinking: false }}
+/>
+```
+
+**After:**
+```tsx
+<FloatingChatInterface 
+  backendUrl="http://localhost:3001"
+  defaultWidth="70%"
+  defaultHeight="70vh"
+  buttonPosition="bottom-right"
+  initialState="minimized"
+  displayConfig={{ showThinking: false }}
+/>
+```
+
+### From SimpleChatInterface (Inline Mode)
+
+**Before:**
+```tsx
+<SimpleChatInterface 
+  backendUrl="http://localhost:3001"
+  overlay={{ enabled: false }}
+  displayConfig={{ showThinking: true }}
+/>
+```
+
+**After:**
+```tsx
+<InlineChatInterface 
+  backendUrl="http://localhost:3001"
+  displayConfig={{ showThinking: true }}
+/>
+```
+
+### Key Changes
+
+1. **Component Names:** `SimpleChatInterface` → `FloatingChatInterface` or `InlineChatInterface`
+2. **Props Flattened:** Overlay properties are now top-level props (no nested `overlay` object)
+3. **Explicit Components:** Use purpose-specific components instead of toggling modes with flags
 
 ## License
 
