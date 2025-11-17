@@ -32,6 +32,7 @@ export interface DisplayConfig {
 
 export interface FloatingChatInterfaceProps {
   backendUrl: string;
+  applicationName?: string;
   initialAgent?: string;
   onError?: (error: string) => void;
   displayConfig?: DisplayConfig;
@@ -156,9 +157,10 @@ const OverlayWrapper: React.FC<OverlayWrapperProps> = ({
     }
   };
 
-  // Floating Action Button (minimized state)
-  if (!isExpanded) {
-    return (
+  // Render both FAB and overlay, show/hide with CSS to preserve state
+  return (
+    <>
+      {/* Floating Action Button (minimized state) */}
       <Fab
         color="primary"
         aria-label="open chat"
@@ -166,6 +168,7 @@ const OverlayWrapper: React.FC<OverlayWrapperProps> = ({
         sx={{
           ...getButtonPosition(),
           boxShadow: theme.shadows[8],
+          display: isExpanded ? 'none' : 'flex',
           '&:hover': {
             transform: 'scale(1.1)',
             transition: 'transform 0.2s ease-in-out',
@@ -174,114 +177,113 @@ const OverlayWrapper: React.FC<OverlayWrapperProps> = ({
       >
         <ChatIcon />
       </Fab>
-    );
-  }
 
-  // Expanded overlay state
-  return (
-    <Paper
-      elevation={16}
-      sx={{
-        position: 'fixed',
-        bottom: 24,
-        right: 24,
-        width: `${size.width}px`,
-        height: `${size.height}px`,
-        zIndex: 9998,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        borderRadius: 2,
-        boxShadow: theme.shadows[24],
-        userSelect: isResizing ? 'none' : 'auto',
-        ...(position.startsWith('top') && {
-          bottom: 'auto',
-          top: 24,
-        }),
-        ...(position.endsWith('left') && {
-          right: 'auto',
-          left: 24,
-        }),
-      }}
-    >
-      {/* Resize Handle - Top Left */}
-      <Box
-        onMouseDown={handleResizeStart}
+      {/* Expanded overlay state */}
+      <Paper
+        elevation={16}
         sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: 40,
-          height: 40,
-          cursor: 'nwse-resize',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10,
-          bgcolor: alpha(theme.palette.primary.main, isResizing ? 0.2 : 0),
-          transition: 'background-color 0.2s',
-          '&:hover': {
-            bgcolor: alpha(theme.palette.primary.main, 0.1),
-          },
-        }}
-        title="Drag to resize"
-      >
-        <DragIndicatorIcon 
-          sx={{ 
-            fontSize: 20,
-            color: theme.palette.text.secondary,
-            opacity: 0.6,
-            transform: 'rotate(45deg)',
-          }} 
-        />
-      </Box>
-
-      {/* Minimize Header */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 2,
-          py: 1,
-          borderBottom: `1px solid ${theme.palette.divider}`,
-          bgcolor: 'background.paper',
-          flexShrink: 0,
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          width: `${size.width}px`,
+          height: `${size.height}px`,
+          zIndex: 9998,
+          display: isExpanded ? 'flex' : 'none',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          borderRadius: 2,
+          boxShadow: theme.shadows[24],
+          userSelect: isResizing ? 'none' : 'auto',
+          ...(position.startsWith('top') && {
+            bottom: 'auto',
+            top: 24,
+          }),
+          ...(position.endsWith('left') && {
+            right: 'auto',
+            left: 24,
+          }),
         }}
       >
-        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 4 }}>
-          <ChatIcon /> Chat Assistant
-        </Typography>
-        <IconButton
-          size="small"
-          onClick={() => setIsExpanded(false)}
-          aria-label="minimize chat"
+        {/* Resize Handle - Top Left */}
+        <Box
+          onMouseDown={handleResizeStart}
           sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: 40,
+            height: 40,
+            cursor: 'nwse-resize',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10,
+            bgcolor: alpha(theme.palette.primary.main, isResizing ? 0.2 : 0),
+            transition: 'background-color 0.2s',
             '&:hover': {
               bgcolor: alpha(theme.palette.primary.main, 0.1),
             },
           }}
+          title="Drag to resize"
         >
-          <MinimizeIcon />
-        </IconButton>
-      </Box>
+          <DragIndicatorIcon 
+            sx={{ 
+              fontSize: 20,
+              color: theme.palette.text.secondary,
+              opacity: 0.6,
+              transform: 'rotate(45deg)',
+            }} 
+          />
+        </Box>
 
-      {/* Chat Content */}
-      <Box sx={{ 
-        flex: 1, 
-        overflow: 'auto',
-        display: 'flex', 
-        flexDirection: 'column',
-        minHeight: 0
-      }}>
-        {children}
-      </Box>
-    </Paper>
+        {/* Minimize Header */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: 2,
+            py: 1,
+            borderBottom: `1px solid ${theme.palette.divider}`,
+            bgcolor: 'background.paper',
+            flexShrink: 0,
+          }}
+        >
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 4 }}>
+            <ChatIcon /> Chat Assistant
+          </Typography>
+          <IconButton
+            size="small"
+            onClick={() => setIsExpanded(false)}
+            aria-label="minimize chat"
+            sx={{
+              '&:hover': {
+                bgcolor: alpha(theme.palette.primary.main, 0.1),
+              },
+            }}
+          >
+            <MinimizeIcon />
+          </IconButton>
+        </Box>
+
+        {/* Chat Content */}
+        <Box sx={{ 
+          flex: 1, 
+          overflow: 'auto',
+          display: 'flex', 
+          flexDirection: 'column',
+          minHeight: 0
+        }}>
+          {children}
+        </Box>
+      </Paper>
+    </>
   );
 };
 
 export const FloatingChatInterface: React.FC<FloatingChatInterfaceProps> = ({
   backendUrl,
+  applicationName,
   initialAgent,
   onError,
   displayConfig,
@@ -291,7 +293,7 @@ export const FloatingChatInterface: React.FC<FloatingChatInterfaceProps> = ({
   initialState
 }) => {
   return (
-    <ConfigProvider config={{ backendUrl, onError, displayConfig }}>
+    <ConfigProvider config={{ backendUrl, applicationName, onError, displayConfig }}>
       <OverlayWrapper
         defaultWidth={defaultWidth}
         defaultHeight={defaultHeight}

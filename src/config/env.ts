@@ -9,6 +9,7 @@
 
 export interface SnowflakeConfig {
   backendUrl: string;  // URL of our secure backend proxy
+  applicationName: string;  // Application name for thread tracking
   authMode: 'PAT' | 'OAUTH';  // Authentication mode
   oauthLoginUrl?: string;  // OAuth login URL (required for OAUTH mode)
   // Legacy fields kept for backward compatibility (not used for API calls)
@@ -59,6 +60,9 @@ const validateEnvironment = (): SnowflakeConfig => {
     );
   }
 
+  // Application name for thread tracking (optional, defaults to 'dash_desai')
+  const applicationName = process.env.REACT_APP_APPLICATION_NAME || 'ask_cortex';
+
   // Legacy variables (optional, kept for backward compatibility)
   const legacyVars = {
     account: process.env.REACT_APP_ACCOUNT || 'not-set',
@@ -73,6 +77,7 @@ const validateEnvironment = (): SnowflakeConfig => {
 
   return {
     backendUrl,
+    applicationName,
     authMode,
     oauthLoginUrl,
     ...legacyVars,

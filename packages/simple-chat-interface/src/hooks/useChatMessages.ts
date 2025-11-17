@@ -13,13 +13,56 @@ import { ERROR_TEXT, API_DEFAULTS, getApiStatusMessage } from '../constants/text
 const MAX_MESSAGES = 100;
 
 export const useChatMessages = (selectedAgent: string) => {
-  const { backendUrl, onError } = useConfig();
+  const { backendUrl, applicationName, onError } = useConfig();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // Threading support: track thread ID and parent message ID
+  const threadIdRef = useRef<string | null>(null);
+  const parentMessageIdRef = useRef<number>(0);
+  
+  // Helper to create a new thread
+  const createNewThread = useCallback(async (): Promise<string | null> => {
+    try {
+      const response = await fetch(`${backendUrl}/api/threads`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          origin_application: applicationName || 'simple_chat_interface'
+        }),
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to create thread:', response.status);
+        return null;
+      }
+      
+      // Snowflake returns a JSON object with thread metadata
+      const threadData = await response.json();
+      // Extract and return the thread_id
+      return String(threadData.thread_id);
+    } catch (error) {
+      console.error('Error creating thread:', error);
+      return null;
+    }
+  }, [backendUrl, applicationName]);
 
   const sendMessage = useCallback(async (message: string) => {
     if (!message.trim() || isLoading) return;
+
+    // Create a new thread if we don't have one yet
+    if (!threadIdRef.current) {
+      const newThreadId = await createNewThread();
+      if (newThreadId) {
+        threadIdRef.current = newThreadId;
+      } else {
+        console.warn('Failed to create thread, continuing without thread_id');
+      }
+    }
 
     const messageId = Date.now().toString();
     const userMessage: ChatMessage = {
@@ -58,7 +101,11 @@ export const useChatMessages = (selectedAgent: string) => {
     abortControllerRef.current = abortController;
 
     try {
-      const requestBody = {
+      // Use current parent message ID (from previous metadata response)
+      const currentParentMessageId = parentMessageIdRef.current;
+      
+      // Build request body with thread info
+      const requestBody: any = {
         messages: [
           {
             role: "user",
@@ -75,6 +122,19 @@ export const useChatMessages = (selectedAgent: string) => {
         },
         stream: true
       };
+
+      // Add threading fields if we have a thread ID
+      if (threadIdRef.current) {
+        const threadIdNum = parseInt(threadIdRef.current, 10);
+        if (!isNaN(threadIdNum)) {
+          requestBody.thread_id = threadIdNum;
+          requestBody.parent_message_id = currentParentMessageId;
+        } else {
+          console.warn(`Invalid thread_id: ${threadIdRef.current}, cannot parse as integer`);
+        }
+      } else {
+        console.log('No thread_id available, sending message without threading');
+      }
 
       // Call backend proxy instead of Snowflake directly (secure: PAT never exposed to browser)
       const backendEndpoint = `${backendUrl}/api/agents/${encodeURIComponent(selectedAgent)}/messages`;
@@ -317,6 +377,13 @@ export const useChatMessages = (selectedAgent: string) => {
                     console.warn('Failed to process annotation:', annotationError);
                   }
                 }
+              } else if (currentEvent === 'metadata') {
+                // Handle metadata event - contains message_id for threading
+                if (data && data.metadata && data.metadata.message_id) {
+                  const messageId = data.metadata.message_id;
+                  // Store this message_id to use as parent_message_id for the next message
+                  parentMessageIdRef.current = messageId;
+                }
               }
             } catch (parseError) {
               // Skip malformed streaming data
@@ -407,6 +474,10 @@ export const useChatMessages = (selectedAgent: string) => {
     setMessages([]);
     setIsLoading(false);
     abortControllerRef.current = null;
+    
+    // Reset threading: clear thread ID (new one will be created) and reset parent message ID
+    threadIdRef.current = null;
+    parentMessageIdRef.current = 0;
   }, [isLoading]);
 
   return {

@@ -709,6 +709,65 @@ app.get('/api/agents/:agentName', authenticate, refreshTokenIfNeeded, async (req
 });
 
 /**
+ * Create a new thread for conversation tracking
+ * POST /api/threads
+ */
+app.post('/api/threads', authenticate, refreshTokenIfNeeded, async (req, res) => {
+  try {
+    const { origin_application } = req.body;
+    
+    // Validate origin_application if provided
+    if (origin_application && typeof origin_application !== 'string') {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        error: 'origin_application must be a string' 
+      });
+    }
+    
+    // Build Snowflake API URL for thread creation
+    const snowflakeUrl = `https://${SNOWFLAKE_CONFIG.host}/api/v2/cortex/threads`;
+    
+    // Get auth headers (handles both PAT and OAUTH modes)
+    const headers = getSnowflakeAuthHeaders(req);
+    
+    // Prepare request body
+    const requestBody = origin_application ? { origin_application } : {};
+    
+    console.log(`Creating thread for application: ${origin_application || 'default'}`);
+    
+    // Call Snowflake Threads API
+    const response = await fetch(snowflakeUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Snowflake thread creation error:', response.status, errorText);
+      return res.status(response.status).json({ 
+        error: `Failed to create thread: ${response.statusText}`,
+        details: errorText
+      });
+    }
+    
+    // Return the raw response from Snowflake as-is
+    // Snowflake returns a JSON object with thread metadata
+    const threadData = await response.json();
+    console.log(`Thread created: ${threadData.thread_id}`);
+    
+    // Return the entire thread object from Snowflake
+    res.json(threadData);
+    
+  } catch (error) {
+    console.error('Error creating thread:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
+      details: error.message 
+    });
+  }
+});
+
+/**
  * Send message to Cortex Agent (streaming endpoint)
  * POST /api/agents/:agentName/messages
  */
@@ -733,6 +792,7 @@ app.post('/api/agents/:agentName/messages', authenticate, refreshTokenIfNeeded, 
     // Format: https://{host}/api/v2/databases/{db}/schemas/{schema}/agents/{agent}:run
     const agentEndpoint = `https://${SNOWFLAKE_CONFIG.host}/api/v2/databases/${SNOWFLAKE_CONFIG.database}/schemas/${SNOWFLAKE_CONFIG.schema}/agents/${agentName}:run`;
     
+    console.log('body', JSON.stringify(requestBody));
     // Make request to Snowflake Agent endpoint
     const response = await fetch(agentEndpoint, {
       method: 'POST',
@@ -751,7 +811,7 @@ app.post('/api/agents/:agentName/messages', authenticate, refreshTokenIfNeeded, 
       
       // For 400/401, skip error details (they're not helpful)
       // For 404 and others, include Snowflake's error details
-      if (response.status !== HTTP_STATUS.BAD_REQUEST && response.status !== HTTP_STATUS.UNAUTHORIZED) {
+      if (response.status !== HTTP_STATUS.BAD_REQUEST) { // && response.status !== HTTP_STATUS.UNAUTHORIZED) {
         if (contentType.includes('application/json')) {
           try {
             const errorData = await response.json();

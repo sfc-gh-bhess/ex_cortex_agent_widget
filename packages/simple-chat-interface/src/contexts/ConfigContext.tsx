@@ -16,6 +16,7 @@ export interface DisplayConfig {
 
 export interface ChatConfig {
   backendUrl: string;
+  applicationName?: string;
   onError?: (error: string) => void;
   displayConfig?: DisplayConfig;
 }
