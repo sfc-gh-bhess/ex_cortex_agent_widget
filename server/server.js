@@ -751,13 +751,18 @@ app.post('/api/threads', authenticate, refreshTokenIfNeeded, async (req, res) =>
     }
     
     // Return the raw response from Snowflake as-is
-    // Snowflake returns a JSON object with thread metadata
     const threadData = await response.json();
     console.log(`Thread created: ${threadData.thread_id}`);
     
     // Return the entire thread object from Snowflake
     res.json(threadData);
-    
+
+    const resp2 = await fetch(`${snowflakeUrl}/${threadData.thread_id}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({"thread_name": `New Thread ${new Date().toISOString()}`})
+    });
+
   } catch (error) {
     console.error('Error creating thread:', error);
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
