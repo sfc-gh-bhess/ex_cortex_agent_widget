@@ -1,265 +1,300 @@
+# Snowflake Cortex Agents Chat Application
 
-# Overview
+A complete chat application powered by [Snowflake Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) via the [REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api). This project demonstrates how to integrate the reusable `simple-chat-interface` package and `chatServer.js` backend module into a production-ready application with authentication, threading, and more.
 
-This guide provides the instructions to build custom application for the data agents you have already built in your Snowflake account. The LLM orchestration, planning, thinking, deep reasoning, and execution of SQL queries, etc. (similar to [ai.snowflake.com](ai.snowflake.com)) is powered by [Snowflake Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) via the [REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api) and the interface is built with TypeScript and Material-UI.
+## 🎯 What's Included
 
-Use this as a starter project or template and extend or customize it. Also note that agents can make mistakes, so double-check responses.
+This repository contains:
 
-## Table of Contents
-- [Prerequisites](#prerequisites)
-- [Setup Steps](#setup-steps)
-    - [1. Clone Repo](#1-clone-repo)
-    - [2. Install Dependencies](#2-install-dependencies)
-    - [3. Configure Environment Variables](#3-configure-environment-variables)
-- [Launch Application](#launch-application)
-    - [Demo](#demo)
-    - [Usage](#usage)
-    - [Implemented Features](#implemented-features)
-    - [Future Enhancements](#future-enhancements)
-    - [Common Issues](#common-issues)
-- [Optimized Build](#optimized-build)
-- [Questions](#questions)
+1. **Reusable React Package** (`packages/simple-chat-interface/`) - Drop-in chat components
+2. **Reusable Backend Module** (`server/chatServer.js`) - Express router for Cortex Agents API
+3. **Sample Application** - Complete demo app showing how to integrate both
 
----
+## 📦 Quick Start (Sample App)
 
-## Prerequisites
+### Prerequisites
 
 - **Node.js** >= 18.0.0
 - **npm** >= 9.0.0
-- **Snowflake Account** 
-    - With ACCOUNTADMIN role 
-    - Personal Access Token (PAT) created for authentication
-    - Access to Snowflake Intelligence and at least one Agent
+- **Snowflake Account** with:
+  - Access to Snowflake Intelligence
+  - At least one Cortex Agent created ([Guide](https://quickstarts.snowflake.com/guide/getting-started-with-snowflake-intelligence/))
+  - Personal Access Token (PAT) or OAuth configured
 
-        NOTE: If you have not created an agent or do not have access to one, follow this [step-by-step guide](https://quickstarts.snowflake.com/guide/getting-started-with-snowflake-intelligence/index.html#0). You can then use the same account and interact with that agent in this application.
+### Installation
 
-## Setup Steps
+1. **Clone the repository**
 
-### 1. Clone Repo
+```bash
+git clone <repository-url>
+cd awesome-custom-cortex-agents-rest-api-react-app
+```
 
-Clone this repository to get the required files.
-
-* Folders
-    - `src/` 
-    - `server/` 
- 
-* Files
-    - `craco.config.js`
-    - `package.json`
-    - `tsconfig.json`
-    - `env.backend.example`
-    - `env.frontend.example`
-
-    > #### Expand to see the folder structure and files details.
-    <details>
-
-    ```
-    ├── src/                                   # Frontend React application
-    │   ├── components/                        # UI Components
-    │   │   ├── Main.tsx                       # Main chat interface
-    │   │   ├── ChartVisualization.tsx         # Chart rendering with Recharts
-    │   │   ├── ThemeToggle.tsx                # Dark/Light mode toggle
-    │   │   └── chat/                          # Chat-specific components
-    │   │       ├── AnnotationsSection.tsx     # Annotations display section
-    │   │       ├── ChatHeader.tsx             # Header with agent selector
-    │   │       ├── ChatInput.tsx              # Message input with voice support
-    │   │       ├── ChatMessage.tsx            # Message display with markdown
-    │   │       ├── ChartsSection.tsx          # Chart visualization section
-    │   │       ├── EmptyState.tsx             # Empty chat state
-    │   │       ├── MarkdownFormatter.tsx      # Markdown rendering
-    │   │       ├── SqlQueriesSection.tsx      # SQL query display
-    │   │       ├── StarterQuestions.tsx       # Suggested questions
-    │   │       ├── ThinkingSteps.tsx          # Agent thinking visualization
-    │   │       └── index.ts                   # Component exports
-    │   │
-    │   ├── hooks/                             # Custom React hooks
-    │   │   ├── useAccordionState.ts           # Accordion state management
-    │   │   ├── useAgentConfig.ts              # Agent configuration & loading
-    │   │   ├── useChatMessages.ts             # Message handling & streaming
-    │   │   └── useSpeechRecognition.ts        # Voice input (Web Speech API)
-    │   │
-    │   ├── services/                          # API services
-    │   │   └── snowflakeAgentsApi.ts          # Backend proxy API calls
-    │   │
-    │   ├── types/                             # TypeScript type definitions
-    │   │   ├── chat.ts                        # Chat message types
-    │   │   └── chart.ts                       # Chart data types
-    │   │
-    │   ├── utils/                             # Utility functions
-    │   │   └── chatUtils.ts                   # Chat helper functions
-    │   │
-    │   ├── contexts/                          # React contexts
-    │   │   └── ThemeContext.tsx               # Theme state management
-    │   │
-    │   ├── constants/                         # App constants
-    │   │   └── textConstants.ts               # UI text & messages
-    │   │
-    │   ├── theme/                             # MUI theme configuration
-    │   │   └── theme.ts                       # Dark/Light theme definitions
-    │   │
-    │   ├── config/                            # App configuration
-    │   │   └── env.ts                         # Environment variable validation
-    │   │
-    │   └── index.tsx                          # App entry point with ErrorBoundary
-    │
-    ├── server/                                # Backend proxy server (Node.js/Express)
-    │   ├── server.js                          # Express server (PAT secured here)
-    │   └── constants.js                       # Server constants & error messages
-    │
-    ├── public/                                # Static assets
-    │   ├── images/                            # Logos and icons
-    │   │   ├── icons/                         # App icons
-    │   │   │   └── dash_snowboard_512.png     # Alternative app icon
-    │   │   ├── logos/                         # Brand logos
-    │   ├── index.html                         # HTML template
-    │   ├── manifest.json                      # PWA manifest
-    │   ├── robots.txt                         # SEO configuration
-    │   └── _headers                           # Security headers for deployment
-    │
-    ├── package.json                           # Dependencies & npm scripts
-    ├── tsconfig.json                          # TypeScript configuration
-    │
-    ├── env.backend.example                    # Backend environment template
-    ├── env.frontend.example                   # Frontend environment template
-    │
-    ├── README.md                              # Main documentation (you are here!)
-    ```
-    </details>
-
-### 2. Install Dependencies
-
-Browse to the cloned repo folder on your local machine. Then, run the following command in a terminal window.
+2. **Install dependencies**
 
 ```bash
 npm install
 ```
 
-This creates the `node_modules/` folder with all required packages.
+This installs dependencies for:
+- The main sample application
+- The `simple-chat-interface` package
 
-### 3. Configure Environment Variables
+3. **Configure environment variables**
 
-* Copy `env.backend.example` → `.env`
+**Backend Configuration:**
+```bash
+cp env.backend.example .env
+```
 
-    > NOTE: Update `.env` and add your Snowflake account details
+Edit `.env` and configure:
 
-* Copy `env.frontend.example` → `.env.local`
+```bash
+# Snowflake Connection
+SNOWFLAKE_HOST=your-account.snowflakecomputing.com
+SNOWFLAKE_DATABASE=your_database
+SNOWFLAKE_SCHEMA=your_schema
 
-## Launch Application
+# Authentication Mode: "PAT" or "OAUTH"
+AUTH_MODE=PAT
 
-Browse to the cloned repo folder on your local machine. Then, run the following command in a terminal window to launch both the frontend application and the backend server.
+# PAT Mode: Provide your Personal Access Token
+SNOWFLAKE_PAT=your_pat_token
+
+# OAuth Mode: Provide these (if using OAUTH)
+# IDP_LOGIN_URL=https://your-idp.com/oauth/authorize
+# IDP_TOKEN_URL=https://your-idp.com/oauth/token
+# OAUTH_CLIENT_ID=your_client_id
+# OAUTH_CLIENT_SECRET=your_client_secret
+# OAUTH_REDIRECT_URI=http://localhost:3001/auth/callback
+
+# CORS (optional, defaults to http://localhost:3000)
+ALLOWED_ORIGINS=http://localhost:3000
+
+# Server Port (optional, defaults to 3001)
+PORT=3001
+```
+
+**Frontend Configuration:**
+```bash
+cp env.frontend.example .env.local
+```
+
+Edit `.env.local` and configure:
+
+```bash
+# Backend API URL
+REACT_APP_BACKEND_URL=http://localhost:3001
+
+# Authentication Mode: must match backend AUTH_MODE
+REACT_APP_AUTH_MODE=PAT
+
+# OAuth Mode: Provide login URL (if using OAUTH)
+# REACT_APP_OAUTH_LOGIN_URL=http://localhost:3001/auth/login
+
+# Application Name (for thread tracking)
+REACT_APP_APPLICATION_NAME=dash_desai
+```
+
+4. **Start the application**
 
 ```bash
 npm run start:all
 ```
 
-The application will automatically launch on [http://localhost:3000](http://localhost:3000) in a browser window
+This starts:
+- Frontend on [http://localhost:3000](http://localhost:3000)
+- Backend on [http://localhost:3001](http://localhost:3001)
 
-### Demo
+## 🔐 Authentication Modes
 
-https://github.com/user-attachments/assets/03cdaf49-51aa-4f8b-8bf8-26310249f169
+This application supports two authentication modes:
 
-### Usage 
+### PAT Mode (Simple)
+- All users share the same Personal Access Token
+- Best for: Prototypes, demos, internal tools
+- Configuration: Set `AUTH_MODE=PAT` in both frontend and backend
 
-* Click on one of the starter questions (if any)
-* Type in a question/prompt in the text input field in the footer
-* To enable voice dictation, click the microphone icon. You will need to grant the necessary audio permissions to your browser. Once permissions are active, you can begin speaking your prompt.
+### OAuth Mode (Production)
+- Each user authenticates with an external Identity Provider
+- Each user gets their own Snowflake access token
+- Best for: Production applications with user-specific access
+- Configuration: Set `AUTH_MODE=OAUTH` in both frontend and backend
 
-### Implemented Features
+**To switch modes:**
+```bash
+# Backend
+AUTH_MODE=PAT npm run start:server
 
-* Agent selector
-* Example questions (if any) for the selected agent 
-* Streaming responses
-* Charts and tables
-* Citations
-* Executed SQL(s) with "Answer accuracy verified by agent owner" indicated when applicable 
-* Audio prompt (requires microphone access in the browser)
-* Copy-to-clipboard and/or ask the same question
-* Copy-to-clipboard the final response
-* Light and dark themes
+# Frontend  
+REACT_APP_AUTH_MODE=PAT npm start
+```
 
-### Future Enhancements
+## 🧩 Using the Reusable Components
 
-* Threading
+### Frontend Package Integration
 
-### Common Issues
+Add the chat interface to **your existing React app**:
 
-1. **Cannot connect to backend** - Make sure backend server is running: `npm run start:server`
+```bash
+npm install ./packages/simple-chat-interface
+```
 
-2. **HTTP 400 Bad Request** - Check your SNOWFLAKE_DATABASE and/or SNOWFLAKE_SCHEMA in the backend `.env` file. Make sure they exist and you have access to them. After making changes, restart the development server.
+```tsx
+import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
 
-3. **HTTP 401 (Unauthorized) or 403 (Forbidden)** - Check your SNOWFLAKE_PAT (Personal Access Token) in the backend `.env` file. Make sure it's valid and not expired. After making changes, restart the development server.
+function App() {
+  return (
+    <ChatThemeProvider>
+      <YourExistingApp />
+      <FloatingChatInterface backendUrl="http://localhost:3001" />
+    </ChatThemeProvider>
+  );
+}
+```
 
-4. **HTTP 503 Service Unavailable** - Check your SNOWFLAKE_HOST in the backend `.env` file. Make sure it's correct and accessible (format: account.snowflakecomputing.com). After making changes, restart the development server. 
+See [`packages/simple-chat-interface/README.md`](packages/simple-chat-interface/README.md) for full documentation.
 
-5. **Connection lost during streaming** - The backend server stopped or crashed, network connection was interrupted, or the backend server is no longer running.
+### Backend Module Integration
 
-6. **CORS errors** - Verify `ALLOWED_ORIGINS` in backend `.env` includes your frontend URL
+Add the chat server to **your existing Express app**:
 
-7. **Voice input not working** - Voice input requires:
-   - Chrome, Edge, or Safari browser (not supported in Firefox)
-   - Microphone permissions granted to the browser
-   - HTTPS connection (required by browser for security)
+1. Copy `server/chatServer.js` to your project
+2. Integrate it:
 
-8. **Port Already in Use**
+```javascript
+const { createChatRouter } = require('./chatServer');
 
-    If you get an error that port 3000 or 3001 is already in use:
+const chatRouter = createChatRouter({
+  snowflakeHost: process.env.SNOWFLAKE_HOST,
+  snowflakeDatabase: process.env.SNOWFLAKE_DATABASE,
+  snowflakeSchema: process.env.SNOWFLAKE_SCHEMA,
+  getAuthToken: (req) => process.env.SNOWFLAKE_PAT // or your auth logic
+});
 
-    - Kill process on port 3000 (Frontend):
+app.use('/api', chatRouter);
+```
 
-        ```bash
-        # macOS/Linux
-        lsof -ti:3000 | xargs kill -9
+See [`server/CHAT_SERVER_README.md`](server/CHAT_SERVER_README.md) for full documentation.
 
-        # Windows (PowerShell)
-        Get-Process -Id (Get-NetTCPConnection -LocalPort 3000).OwningProcess | Stop-Process -Force
-        ```
+## ✨ Features
 
-    - Kill process on port 3001 (Backend):
+- 🤖 **Multi-Agent Support** - Switch between different Cortex Agents
+- 🧵 **Thread Management** - Create, list, and revisit conversation threads
+- 💭 **Thinking Visualization** - See the agent's reasoning process (optional)
+- 📊 **Chart Support** - Automatic visualization with Vega-Lite
+- 🗣️ **Voice Input** - Speech-to-text for hands-free interaction
+- 🎨 **Dark/Light Themes** - Automatic theme switching
+- 🔐 **Dual Auth Modes** - PAT or OAuth, configurable without code changes
+- 📱 **Responsive Design** - Works on desktop, tablet, and mobile
+- ♿ **Accessible** - WCAG 2.1 compliant
 
-        ```bash
-        # macOS/Linux
-        lsof -ti:3001 | xargs kill -9
+## 📂 Project Structure
 
-        # Windows (PowerShell)
-        Get-Process -Id (Get-NetTCPConnection -LocalPort 3001).OwningProcess | Stop-Process -Force
-        ```
+```
+.
+├── packages/simple-chat-interface/    # Reusable React chat package
+│   ├── src/
+│   │   ├── components/               # React components
+│   │   ├── hooks/                    # Custom hooks
+│   │   ├── services/                 # API services
+│   │   └── index.ts                  # Package exports
+│   └── README.md                     # Package documentation
+│
+├── server/
+│   ├── chatServer.js                 # Reusable Express router module
+│   ├── server.js                     # Sample application server
+│   └── CHAT_SERVER_README.md         # Backend integration docs
+│
+├── src/                              # Sample application frontend
+│   ├── components/                   # App-specific components
+│   ├── contexts/                     # React contexts (Auth, Theme)
+│   ├── pages/                        # Login, OAuth callback pages
+│   ├── services/                     # Auth service
+│   └── index.tsx                     # App entry point
+│
+├── .env                              # Backend config (gitignored)
+├── .env.local                        # Frontend config (gitignored)
+├── env.backend.example               # Backend config template
+├── env.frontend.example              # Frontend config template
+└── README.md                         # This file
+```
 
-    - Kill both ports at once (macOS/Linux):
+## 🔧 Development
 
-        ```bash
-        lsof -ti:3000,3001 | xargs kill -9
-        ```
+### Run frontend only:
+```bash
+npm start
+```
 
-## Optimized Build
+### Run backend only:
+```bash
+npm run start:server
+```
 
-Browse to the cloned repo folder on your local machine. Then, run the following command in a terminal window.
-
+### Build for production:
 ```bash
 npm run build
 ```
 
-This creates an optimized build in the `/build` folder with:
-
-- Minified JavaScript bundles
-- No source maps (GENERATE_SOURCEMAP=false)
-- Optimized assets
-- Security headers (_headers file)
-
-If you're going to run the backend on a different service/server/platform, then build using the following:
-
+### Build with custom backend URL:
 ```bash
-REACT_APP_BACKEND_URL=<YOUR_BACKEND_URL> npm run build
+REACT_APP_BACKEND_URL=https://your-api.com npm run build
 ```
 
-Examples:
+## 🐛 Troubleshooting
 
+### Common Issues
+
+**1. Cannot connect to backend**
+- Ensure backend is running: `npm run start:server`
+- Check `REACT_APP_BACKEND_URL` in `.env.local`
+
+**2. HTTP 401 Unauthorized**
+- **PAT Mode**: Verify `SNOWFLAKE_PAT` in `.env` is valid and not expired
+- **OAuth Mode**: Check OAuth configuration and token refresh logic
+
+**3. HTTP 400 Bad Request**
+- Verify `SNOWFLAKE_DATABASE` and `SNOWFLAKE_SCHEMA` exist
+- Ensure you have access to them in Snowflake
+
+**4. HTTP 404 Agent Not Found**
+- Check that agents exist in your database/schema
+- Agent names are case-sensitive
+
+**5. Thread panel not appearing**
+- Only available in `FloatingChatInterface`
+- Click the history icon (📜) in the chat input area
+
+**6. Voice input not working**
+- Requires Chrome, Edge, or Safari (not Firefox)
+- Must grant microphone permissions
+- HTTPS required in production
+
+**7. Port already in use**
 ```bash
-REACT_APP_BACKEND_URL=https://my-service.onrender.com npm run build
-REACT_APP_BACKEND_URL=https://my-api.herokuapp.com npm run build
-REACT_APP_BACKEND_URL=https://api.railway.app npm run build
-REACT_APP_BACKEND_URL=https://my-function.vercel.app npm run build
+# Kill frontend (port 3000)
+lsof -ti:3000 | xargs kill -9
+
+# Kill backend (port 3001)
+lsof -ti:3001 | xargs kill -9
 ```
 
-## Questions
+## 📖 Documentation
 
-If you have any questions, comments or feedack, reach out to [Dash DesAI](https://www.linkedin.com/in/dash-desai/).
+- [Frontend Package Documentation](packages/simple-chat-interface/README.md)
+- [Backend Module Documentation](server/CHAT_SERVER_README.md)
+- [Snowflake Cortex Agents Docs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents)
+- [Cortex Agents REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api)
+
+## 📝 License
+
+MIT
+
+## 💬 Questions
+
+For questions, comments, or feedback, reach out to [Dash DesAI](https://www.linkedin.com/in/dash-desai/).
+
+---
+
+**Made with ❄️ using Snowflake Cortex**

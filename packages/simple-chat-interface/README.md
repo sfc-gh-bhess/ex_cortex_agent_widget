@@ -1,6 +1,8 @@
 # @chat-overlay/simple-chat-interface
 
-Embeddable chat interface component powered by Snowflake Cortex Agents REST API. Built with React, TypeScript, and Material-UI.
+Drop-in React chat interface powered by [Snowflake Cortex Agents REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api). Built with React, TypeScript, and Material-UI.
+
+> **💡 Note:** This is a frontend-only package. You'll also need a backend that implements the required API endpoints. See the [Backend Integration Guide](../../server/CHAT_SERVER_README.md) for a ready-to-use Express module.
 
 ## Installation
 
@@ -66,6 +68,7 @@ function MyApp() {
 | `initialAgent` | `string` | No | - | Initial agent to select |
 | `onError` | `(error: string) => void` | No | - | Callback when an error occurs |
 | `displayConfig` | `DisplayConfig` | No | - | Configuration for optional sections |
+| `applicationName` | `string` | No | `'simple_chat_interface'` | Application name for thread tracking |
 
 ### InlineChatInterface
 
@@ -77,6 +80,7 @@ function MyApp() {
 | `className` | `string` | No | - | Custom CSS class |
 | `style` | `React.CSSProperties` | No | - | Custom inline styles |
 | `displayConfig` | `DisplayConfig` | No | - | Configuration for optional sections |
+| `applicationName` | `string` | No | `'simple_chat_interface'` | Application name for thread tracking |
 
 ### ChatInterface (Advanced)
 
@@ -132,6 +136,7 @@ function App() {
           defaultHeight="70vh"
           buttonPosition="bottom-right"
           initialState="minimized"
+          applicationName="my_app"
           displayConfig={{
             showThinking: false,
             showSqlQueries: false,
@@ -150,6 +155,7 @@ function App() {
 - ✅ Resizable by dragging the top-left corner
 - ✅ Minimize button to collapse back to floating button
 - ✅ Configurable size and position
+- ✅ Thread history panel (click history icon in chat input)
 
 ### Floating Chat with Custom Size
 
@@ -182,6 +188,7 @@ function App() {
       <div style={{ height: '80vh' }}>
         <InlineChatInterface 
           backendUrl="http://localhost:3001"
+          applicationName="my_app"
           displayConfig={{
             showThinking: true,
             showSqlQueries: true,
@@ -229,6 +236,7 @@ function App() {
       <ConfigProvider 
         config={{
           backendUrl: 'http://localhost:3001',
+          applicationName: 'my_app',
           onError: (error) => console.error(error),
           displayConfig: {
             showThinking: true,
@@ -269,9 +277,45 @@ function App() {
 
 ## Backend Requirements
 
-This component requires a backend proxy server that handles authentication and communicates with the Snowflake Cortex Agents REST API. The backend should expose the following endpoints:
+This component requires a backend that implements the following API endpoints. We provide a ready-to-use Express module - see the [Backend Integration Guide](../../server/CHAT_SERVER_README.md).
 
-### GET /api/agents/config
+### Required Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/agents` | GET | List all available agents with configuration |
+| `/api/agents/:name` | GET | Get details for a specific agent |
+| `/api/agents/:name/messages` | POST | Send a message to an agent (streaming SSE) |
+| `/api/threads` | POST | Create a new conversation thread |
+| `/api/threads` | GET | List all user's conversation threads |
+| `/api/threads/:id` | GET | Get conversation history for a thread |
+| `/api/threads/:id` | POST | Update thread name |
+| `/api/threads/:id` | DELETE | Delete a thread |
+
+### Quick Backend Setup
+
+**Option 1: Use our Express module (recommended)**
+
+```javascript
+const { createChatRouter } = require('./chatServer');
+
+app.use('/api', createChatRouter({
+  snowflakeHost: process.env.SNOWFLAKE_HOST,
+  snowflakeDatabase: process.env.SNOWFLAKE_DATABASE,
+  snowflakeSchema: process.env.SNOWFLAKE_SCHEMA,
+  getAuthToken: (req) => process.env.SNOWFLAKE_PAT
+}));
+```
+
+See the [Backend Integration Guide](../../server/CHAT_SERVER_README.md) for complete setup instructions.
+
+**Option 2: Implement your own**
+
+See the API specifications below for request/response formats.
+
+### API Specifications
+
+#### GET /api/agents
 
 Returns agent configuration:
 
@@ -281,7 +325,7 @@ Returns agent configuration:
     "agent_name": {
       "displayName": "Agent Display Name",
       "visible": true,
-      "starterQuestions": ["Question 1", "Question 2"],
+      "starterQuestions": ["Question 1?", "Question 2?"],
       "description": "Agent description"
     }
   },
@@ -289,7 +333,7 @@ Returns agent configuration:
 }
 ```
 
-### POST /api/agents/:agentName/messages
+#### POST /api/agents/:agentName/messages
 
 Proxies streaming chat requests to Snowflake. Accepts:
 
@@ -301,27 +345,105 @@ Proxies streaming chat requests to Snowflake. Accepts:
       "content": [{"type": "text", "text": "User message"}]
     }
   ],
+  "thread_id": "optional_thread_id",
+  "parent_message_id": 0,
   "tool_choice": {"type": "auto"},
   "stream": true
 }
 ```
 
-Returns Server-Sent Events (SSE) stream with events like:
+Returns Server-Sent Events (SSE) stream with events:
 - `response.text.delta` - Streaming text response
-- `response.status` - Status updates
+- `response.status` - Status updates  
 - `response.tool_result` - Tool execution results
 - `response.thinking` - Thinking process text
-- `response.chart` - Chart visualizations
+- `response.chart` - Chart visualizations (Vega-Lite)
 - `response.text.annotation` - Citations and references
+- `metadata` - Message metadata (includes `message_id`)
+
+#### Thread Endpoints
+
+**POST /api/threads** - Create thread
+
+Request:
+```json
+{"origin_application": "your_app_name"}
+```
+
+Response:
+```json
+{
+  "thread_id": "123456",
+  "origin_application": "your_app_name",
+  "created_on": 1234567890
+}
+```
+
+**GET /api/threads** - List threads
+
+Response:
+```json
+[
+  {
+    "thread_id": 123456,
+    "thread_name": "Thread name",
+    "created_on": 1234567890,
+    "updated_on": 1234567890
+  }
+]
+```
+
+**GET /api/threads/:id** - Get thread history
+
+Response:
+```json
+{
+  "metadata": {
+    "thread_id": 123456,
+    "thread_name": "Thread name",
+    "created_on": 1234567890,
+    "updated_on": 1234567890
+  },
+  "messages": [
+    {
+      "message_id": 1,
+      "parent_id": 0,
+      "created_on": 1234567890,
+      "role": "user",
+      "message_payload": "{...}"
+    }
+  ]
+}
+```
+
+**POST /api/threads/:id** - Update thread name
+
+Request:
+```json
+{"thread_name": "New name"}
+```
+
+Response:
+```
+204 No Content
+```
+
+**DELETE /api/threads/:id** - Delete thread
+
+Response:
+```
+204 No Content
+```
 
 ## Features
 
 - Real-time streaming chat interface
 - Support for multiple Snowflake Cortex Agents
-- Thinking process visualization
-- SQL query display
+- Thread management (create, list, revisit conversations)
+- Thinking process visualization (optional)
+- SQL query display (optional)
 - Chart visualizations (Vega-Lite)
-- Citations and annotations
+- Citations and annotations (optional)
 - Starter questions
 - Dark/light theme support
 - Voice input (speech recognition)
@@ -385,8 +507,8 @@ If you were using `SimpleChatInterface` from a previous version, here's how to m
 1. **Component Names:** `SimpleChatInterface` → `FloatingChatInterface` or `InlineChatInterface`
 2. **Props Flattened:** Overlay properties are now top-level props (no nested `overlay` object)
 3. **Explicit Components:** Use purpose-specific components instead of toggling modes with flags
+4. **Application Name:** New `applicationName` prop for thread tracking (defaults to `'simple_chat_interface'`)
 
 ## License
 
 MIT
-

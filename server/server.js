@@ -10,6 +10,11 @@
  * - Request validation and sanitization
  * - Rate limiting to prevent abuse
  * - Proper error handling without exposing sensitive info
+ * 
+ * INTEGRATION NOTE:
+ * This is a sample application that demonstrates how to integrate the chatServer module.
+ * The chatServer.js file provides all endpoints needed for the ChatInterface component
+ * and can be dropped into any Express application. See chatServer.js for more details.
  */
 
 const express = require('express');
@@ -19,6 +24,7 @@ const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 require('dotenv').config();
 const { HTTP_STATUS, ERROR_MESSAGES, CONFIG } = require('./constants');
+const { createChatRouter } = require('./chatServer');
 
 const app = express();
 // Render uses PORT, local dev uses SERVER_PORT
@@ -199,36 +205,6 @@ app.use((req, res, next) => {
 // ============================================================================
 
 /**
- * Get authentication headers for Snowflake API
- * Adapts based on AUTH_MODE
- */
-const getSnowflakeAuthHeaders = (req) => {
-  const baseHeaders = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  };
-  
-  if (req.authMode === 'PAT') {
-    // PAT mode: Use PAT from environment
-    return {
-      ...baseHeaders,
-      'Authorization': `Bearer ${process.env.SNOWFLAKE_PAT}`
-    };
-  }
-  
-  // OAUTH mode: Use session-based access token
-  const tokens = req.tokens;
-  if (!tokens) {
-    throw new Error('No valid session found');
-  }
-  
-  return {
-    ...baseHeaders,
-    'Authorization': `Bearer ${tokens.accessToken}`
-  };
-};
-
-/**
  * Sanitize error messages to prevent information leakage
  */
 const sanitizeError = (error) => {
@@ -245,19 +221,6 @@ const sanitizeError = (error) => {
     message: error.message?.replace(/Bearer\s+[\w-]+/g, 'Bearer [REDACTED]') || 'Unknown error',
     code: error.code || 'UNKNOWN_ERROR'
   };
-};
-
-/**
- * Validate agent name to prevent injection attacks
- */
-const validateAgentName = (agentName) => {
-  if (!agentName || typeof agentName !== 'string') {
-    return false;
-  }
-  
-  // Allow alphanumeric, underscore, hyphen, and dot
-  const validPattern = /^[a-zA-Z0-9_\-\.]+$/;
-  return validPattern.test(agentName) && agentName.length <= CONFIG.MAX_AGENT_NAME_LENGTH;
 };
 
 // ============================================================================
@@ -374,7 +337,35 @@ const refreshTokenIfNeeded = async (req, res, next) => {
 };
 
 // ============================================================================
-// API Routes
+// Integrate Chat Server Module
+// ============================================================================
+
+/**
+ * Create and mount the chat router
+ * This provides all endpoints needed for the ChatInterface component
+ */
+const chatRouter = createChatRouter({
+  snowflakeHost: SNOWFLAKE_CONFIG.host,
+  snowflakeDatabase: SNOWFLAKE_CONFIG.database,
+  snowflakeSchema: SNOWFLAKE_CONFIG.schema,
+  getAuthToken: (req) => {
+    // PAT mode: Use PAT from environment
+    if (req.authMode === 'PAT') {
+      return process.env.SNOWFLAKE_PAT;
+    }
+    // OAUTH mode: Use session-based access token
+    return req.tokens?.accessToken;
+  },
+  onError: (error) => {
+    console.error('Chat server error:', error.message);
+  }
+});
+
+// Mount chat router with authentication middleware
+app.use('/api', authenticate, refreshTokenIfNeeded, chatRouter);
+
+// ============================================================================
+// Sample Application Routes
 // ============================================================================
 
 /**
@@ -535,574 +526,8 @@ app.post('/auth/logout', (req, res) => {
 }
 
 // ============================================================================
-// Cortex Agent API Endpoints
+// Error Handling
 // ============================================================================
-
-/**
- * List all Cortex Agents
- * GET /api/agents
- */
-app.get('/api/agents', authenticate, refreshTokenIfNeeded, async (req, res) => {
-  try {
-    const endpoint = `https://${SNOWFLAKE_CONFIG.host}/api/v2/databases/${SNOWFLAKE_CONFIG.database}/schemas/${SNOWFLAKE_CONFIG.schema}/agents`;
-    
-    console.log('📡 Fetching agents list from Snowflake...');
-    
-    const response = await fetch(endpoint, {
-      method: 'GET',
-      headers: getSnowflakeAuthHeaders(req),
-    });
-
-    if (!response.ok) {
-      const contentType = response.headers.get('content-type') || '';
-      
-      // Handle OAuth token rejection
-      if (response.status === HTTP_STATUS.UNAUTHORIZED) {
-        const errorParts = [
-          ERROR_MESSAGES.ERROR_PREFIX,
-          `${ERROR_MESSAGES.HTTP_ERROR_STATUS} ${response.status} ${response.statusText}`,
-          '💡 Tip: OAuth token was rejected. Verify your Identity Provider is configured for Snowflake API access.'
-        ];
-        console.error('❌ Snowflake API error:', response.status);
-        return res.status(response.status).json({ errorParts });
-      }
-      
-      // Build error message as array of parts (preserves structure better than string with \n\n)
-      const errorParts = [
-        ERROR_MESSAGES.ERROR_PREFIX,
-        `${ERROR_MESSAGES.HTTP_ERROR_STATUS} ${response.status} ${response.statusText}`
-      ];
-      
-      // For 400/401, skip error details (they're not helpful)
-      // For 404 and others, include Snowflake's error details
-      if (response.status !== HTTP_STATUS.BAD_REQUEST && response.status !== HTTP_STATUS.UNAUTHORIZED) {
-        if (contentType.includes('application/json')) {
-          try {
-            const errorData = await response.json();
-            const details = errorData.error || errorData.message || JSON.stringify(errorData, null, 2);
-            errorParts.push(details);
-          } catch {
-            // JSON parsing failed, use default message
-          }
-        }
-      }
-      
-      // Add helpful configuration hints based on status code
-      if (response.status === HTTP_STATUS.BAD_REQUEST) {
-        errorParts.push(ERROR_MESSAGES.TIPS.BAD_REQUEST);
-      } else if (response.status === HTTP_STATUS.UNAUTHORIZED) {
-        errorParts.push(ERROR_MESSAGES.TIPS.UNAUTHORIZED);
-      } else if (response.status === HTTP_STATUS.NOT_FOUND) {
-        errorParts.push(ERROR_MESSAGES.TIPS.NOT_FOUND);
-      }
-      
-      console.error('❌ Snowflake API error:', response.status, errorParts.join('\n'));
-      
-      return res.status(response.status).json({
-        errorParts  // Send as array instead of single string
-      });
-    }
-
-    const data = await response.json();
-    console.log(`✅ Successfully fetched ${Array.isArray(data) ? data.length : 'unknown'} agents`);
-    
-    res.json(data);
-  } catch (error) {
-    console.error('❌ Error fetching agents:', error.message);
-    
-    // Check if this is a network error (DNS, connection failed, etc.)
-    if (error.cause?.code === 'ENOTFOUND' || error.message.includes('fetch failed') || error.cause?.code === 'ECONNREFUSED') {
-      const errorParts = [
-        ERROR_MESSAGES.ERROR_PREFIX,
-        `${ERROR_MESSAGES.HTTP_ERROR_STATUS} ${HTTP_STATUS.SERVICE_UNAVAILABLE} Service Unavailable`,
-        ERROR_MESSAGES.TIPS.SERVICE_UNAVAILABLE
-      ];
-      return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({ errorParts });
-    }
-    
-    res.status(500).json({ error: sanitizeError(error) });
-  }
-});
-
-/**
- * Get details for a specific Cortex Agent
- * GET /api/agents/:agentName
- */
-app.get('/api/agents/:agentName', authenticate, refreshTokenIfNeeded, async (req, res) => {
-  try {
-    const { agentName } = req.params;
-    
-    // Validate agent name to prevent injection
-    if (!validateAgentName(agentName)) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
-        error: ERROR_MESSAGES.TIPS.INVALID_AGENT_NAME
-      });
-    }
-    
-    const endpoint = `https://${SNOWFLAKE_CONFIG.host}/api/v2/databases/${SNOWFLAKE_CONFIG.database}/schemas/${SNOWFLAKE_CONFIG.schema}/agents/${agentName}`;
-    
-    console.log(`📡 Fetching details for agent: ${agentName}...`);
-    
-    const response = await fetch(endpoint, {
-      method: 'GET',
-      headers: getSnowflakeAuthHeaders(req),
-    });
-
-    if (!response.ok) {
-      const contentType = response.headers.get('content-type') || '';
-      
-      // Build error message as array of parts (preserves structure better than string with \n\n)
-      const errorParts = [
-        ERROR_MESSAGES.ERROR_PREFIX,
-        `${ERROR_MESSAGES.HTTP_ERROR_STATUS} ${response.status} ${response.statusText}`
-      ];
-      
-      // For 400/401, skip error details (they're not helpful)
-      // For 404 and others, include Snowflake's error details
-      if (response.status !== HTTP_STATUS.BAD_REQUEST && response.status !== HTTP_STATUS.UNAUTHORIZED) {
-        if (contentType.includes('application/json')) {
-          try {
-            const errorData = await response.json();
-            const details = errorData.error || errorData.message || JSON.stringify(errorData, null, 2);
-            errorParts.push(details);
-          } catch {
-            // JSON parsing failed, use default message
-          }
-        }
-      }
-      
-      // Add helpful configuration hints based on status code
-      if (response.status === HTTP_STATUS.BAD_REQUEST) {
-        errorParts.push(ERROR_MESSAGES.TIPS.BAD_REQUEST);
-      } else if (response.status === HTTP_STATUS.UNAUTHORIZED) {
-        errorParts.push(ERROR_MESSAGES.TIPS.UNAUTHORIZED);
-      } else if (response.status === HTTP_STATUS.NOT_FOUND) {
-        errorParts.push(ERROR_MESSAGES.TIPS.NOT_FOUND_AGENT(agentName));
-      }
-      
-      console.error('❌ Snowflake API error:', response.status, errorParts.join('\n'));
-      
-      return res.status(response.status).json({
-        errorParts  // Send as array instead of single string
-      });
-    }
-
-    const data = await response.json();
-    console.log(`✅ Successfully fetched details for agent: ${agentName}`);
-    
-    res.json(data);
-  } catch (error) {
-    console.error('❌ Error fetching agent details:', error.message);
-    
-    // Check if this is a network error (DNS, connection failed, etc.)
-    if (error.cause?.code === 'ENOTFOUND' || error.message.includes('fetch failed') || error.cause?.code === 'ECONNREFUSED') {
-      const errorParts = [
-        ERROR_MESSAGES.ERROR_PREFIX,
-        `${ERROR_MESSAGES.HTTP_ERROR_STATUS} ${HTTP_STATUS.SERVICE_UNAVAILABLE} Service Unavailable`,
-        ERROR_MESSAGES.TIPS.SERVICE_UNAVAILABLE
-      ];
-      return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({ errorParts });
-    }
-    
-    res.status(500).json({ error: sanitizeError(error) });
-  }
-});
-
-/**
- * Create a new thread for conversation tracking
- * POST /api/threads
- */
-app.post('/api/threads', authenticate, refreshTokenIfNeeded, async (req, res) => {
-  try {
-    const { origin_application } = req.body;
-    
-    // Validate origin_application if provided
-    if (origin_application && typeof origin_application !== 'string') {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
-        error: 'origin_application must be a string' 
-      });
-    }
-    
-    // Build Snowflake API URL for thread creation
-    const snowflakeUrl = `https://${SNOWFLAKE_CONFIG.host}/api/v2/cortex/threads`;
-    
-    // Get auth headers (handles both PAT and OAUTH modes)
-    const headers = getSnowflakeAuthHeaders(req);
-    
-    // Prepare request body
-    const requestBody = origin_application ? { origin_application } : {};
-    
-    console.log(`Creating thread for application: ${origin_application || 'default'}`);
-    
-    // Call Snowflake Threads API
-    const response = await fetch(snowflakeUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody)
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Snowflake thread creation error:', response.status, errorText);
-      return res.status(response.status).json({ 
-        error: `Failed to create thread: ${response.statusText}`,
-        details: errorText
-      });
-    }
-    
-    // Return the raw response from Snowflake as-is
-    const threadData = await response.json();
-    console.log(`Thread created: ${threadData.thread_id}`);
-    
-    // Return the entire thread object from Snowflake
-    res.json(threadData);
-
-    const resp2 = await fetch(`${snowflakeUrl}/${threadData.thread_id}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({"thread_name": `New Thread ${new Date().toISOString()}`})
-    });
-
-  } catch (error) {
-    console.error('Error creating thread:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
-      error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
-      details: error.message 
-    });
-  }
-});
-
-/**
- * List all threads for the user
- * GET /api/threads
- */
-app.get('/api/threads', authenticate, refreshTokenIfNeeded, async (req, res) => {
-  try {
-    // Build Snowflake API URL for listing threads
-    const snowflakeUrl = `https://${SNOWFLAKE_CONFIG.host}/api/v2/cortex/threads`;
-    
-    // Get auth headers (handles both PAT and OAUTH modes)
-    const headers = getSnowflakeAuthHeaders(req);
-    
-    console.log('Fetching thread list...');
-    
-    // Call Snowflake Threads API
-    const response = await fetch(snowflakeUrl, {
-      method: 'GET',
-      headers
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Snowflake thread list error:', response.status, errorText);
-      return res.status(response.status).json({ 
-        error: `Failed to list threads: ${response.statusText}`,
-        details: errorText
-      });
-    }
-    
-    // Return the raw response from Snowflake as-is (array of threads)
-    const threadsArray = await response.json();
-    console.log(`Retrieved ${threadsArray?.length || 0} threads`);
-    
-    res.json(threadsArray);
-    
-  } catch (error) {
-    console.error('Error listing threads:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
-      error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
-      details: error.message 
-    });
-  }
-});
-
-/**
- * Get thread history by ID
- * GET /api/threads/:threadId
- */
-app.get('/api/threads/:threadId', authenticate, refreshTokenIfNeeded, async (req, res) => {
-  try {
-    const { threadId } = req.params;
-    
-    // Build Snowflake API URL for thread retrieval
-    const snowflakeUrl = `https://${SNOWFLAKE_CONFIG.host}/api/v2/cortex/threads/${threadId}`;
-    
-    // Get auth headers (handles both PAT and OAUTH modes)
-    const headers = getSnowflakeAuthHeaders(req);
-    
-    console.log(`Fetching thread history for thread: ${threadId}`);
-    
-    // Call Snowflake Threads API
-    const response = await fetch(snowflakeUrl, {
-      method: 'GET',
-      headers
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Snowflake thread fetch error:', response.status, errorText);
-      return res.status(response.status).json({ 
-        error: `Failed to fetch thread: ${response.statusText}`,
-        details: errorText
-      });
-    }
-    
-    // Return the raw response from Snowflake as-is
-    const threadData = await response.json();
-    console.log(`Retrieved thread ${threadId} with ${threadData.messages?.length || 0} messages`);
-    
-    res.json(threadData);
-    
-  } catch (error) {
-    console.error('Error fetching thread:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
-      error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
-      details: error.message 
-    });
-  }
-});
-
-/**
- * Update thread name
- * POST /api/threads/:threadId
- */
-app.post('/api/threads/:threadId', authenticate, refreshTokenIfNeeded, async (req, res) => {
-  try {
-    const { threadId } = req.params;
-    const { thread_name } = req.body;
-    
-    // Validate thread_name
-    if (!thread_name || typeof thread_name !== 'string') {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
-        error: 'thread_name is required and must be a string' 
-      });
-    }
-    
-    // Build Snowflake API URL for thread update
-    const snowflakeUrl = `https://${SNOWFLAKE_CONFIG.host}/api/v2/cortex/threads/${threadId}`;
-    
-    // Get auth headers (handles both PAT and OAUTH modes)
-    const headers = getSnowflakeAuthHeaders(req);
-    
-    console.log(`Updating thread ${threadId} name to: ${thread_name}`);
-    
-    // Call Snowflake Threads API
-    const response = await fetch(snowflakeUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ thread_name })
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Snowflake thread update error:', response.status, errorText);
-      return res.status(response.status).json({ 
-        error: `Failed to update thread: ${response.statusText}`,
-        details: errorText
-      });
-    }
-    
-    // Return success response
-    console.log(`Thread ${threadId} updated successfully`);
-    res.json({ success: true, thread_id: threadId, thread_name });
-    
-  } catch (error) {
-    console.error('Error updating thread:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
-      error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
-      details: error.message 
-    });
-  }
-});
-
-/**
- * Delete thread by ID
- * DELETE /api/threads/:threadId
- */
-app.delete('/api/threads/:threadId', authenticate, refreshTokenIfNeeded, async (req, res) => {
-  try {
-    const { threadId } = req.params;
-    
-    // Build Snowflake API URL for thread deletion
-    const snowflakeUrl = `https://${SNOWFLAKE_CONFIG.host}/api/v2/cortex/threads/${threadId}`;
-    
-    // Get auth headers (handles both PAT and OAUTH modes)
-    const headers = getSnowflakeAuthHeaders(req);
-    
-    console.log(`Deleting thread: ${threadId}`);
-    
-    // Call Snowflake Threads API
-    const response = await fetch(snowflakeUrl, {
-      method: 'DELETE',
-      headers
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Snowflake thread delete error:', response.status, errorText);
-      return res.status(response.status).json({ 
-        error: `Failed to delete thread: ${response.statusText}`,
-        details: errorText
-      });
-    }
-    
-    // Return success response
-    console.log(`Thread ${threadId} deleted successfully`);
-    res.json({ success: true, thread_id: threadId });
-    
-  } catch (error) {
-    console.error('Error deleting thread:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
-      error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
-      details: error.message 
-    });
-  }
-});
-
-/**
- * Send message to Cortex Agent (streaming endpoint)
- * POST /api/agents/:agentName/messages
- */
-app.post('/api/agents/:agentName/messages', authenticate, refreshTokenIfNeeded, async (req, res) => {
-  try {
-    const { agentName } = req.params;
-    const requestBody = req.body;
-    
-    // Validate inputs
-    if (!validateAgentName(agentName)) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: ERROR_MESSAGES.TIPS.INVALID_AGENT_NAME });
-    }
-    
-    // Validate request body has messages
-    if (!requestBody.messages || !Array.isArray(requestBody.messages) || requestBody.messages.length === 0) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: ERROR_MESSAGES.TIPS.MESSAGES_REQUIRED });
-    }
-    
-    console.log(`💬 Sending message to agent: ${agentName}`);
-    
-    // Build Snowflake agent messaging endpoint dynamically
-    // Format: https://{host}/api/v2/databases/{db}/schemas/{schema}/agents/{agent}:run
-    const agentEndpoint = `https://${SNOWFLAKE_CONFIG.host}/api/v2/databases/${SNOWFLAKE_CONFIG.database}/schemas/${SNOWFLAKE_CONFIG.schema}/agents/${agentName}:run`;
-    
-    console.log('body', JSON.stringify(requestBody));
-    // Make request to Snowflake Agent endpoint
-    const response = await fetch(agentEndpoint, {
-      method: 'POST',
-      headers: getSnowflakeAuthHeaders(req),
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const contentType = response.headers.get('content-type') || '';
-      
-      // Build error message as array of parts (preserves structure better than string with \n\n)
-      const errorParts = [
-        ERROR_MESSAGES.ERROR_PREFIX,
-        `${ERROR_MESSAGES.HTTP_ERROR_STATUS} ${response.status} ${response.statusText}`
-      ];
-      
-      // For 400/401, skip error details (they're not helpful)
-      // For 404 and others, include Snowflake's error details
-      if (response.status !== HTTP_STATUS.BAD_REQUEST) { // && response.status !== HTTP_STATUS.UNAUTHORIZED) {
-        if (contentType.includes('application/json')) {
-          try {
-            const errorData = await response.json();
-            const details = errorData.error || errorData.message || JSON.stringify(errorData, null, 2);
-            errorParts.push(details);
-          } catch {
-            // JSON parsing failed, use default message
-          }
-        }
-      }
-      
-      // Add helpful configuration hints based on status code and content type
-      if (response.status === 400) {
-        errorParts.push('💡 Tip: Check your SNOWFLAKE_DATABASE and SNOWFLAKE_SCHEMA in the backend .env file. Make sure they exist and you have access to them.');
-      } else if (response.status === 401) {
-        errorParts.push('💡 Tip: Check your SNOWFLAKE_PAT (Personal Access Token) in the backend .env file. Make sure it\'s valid and not expired.');
-      } else if (response.status === 404) {
-        errorParts.push('💡 Tip: Check your SNOWFLAKE_HOST in the backend .env file. Make sure it\'s correct and accessible.');
-      }
-      
-      console.error('❌ Snowflake Agent API error:', response.status, errorParts.join('\n'));
-      
-      return res.status(response.status).json({
-        errorParts  // Send as array instead of single string
-      });
-    }
-
-    // Check if response is streaming
-    const contentType = response.headers.get('content-type');
-    
-    if (contentType?.includes('text/event-stream') || contentType?.includes('stream')) {
-      // Set headers for SSE streaming
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering for nginx
-      
-      console.log('📡 Streaming response from agent...');
-      
-      // Use Node.js streams to pipe the response
-      const reader = response.body.getReader();
-      const pump = async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            
-            if (done) {
-              res.end();
-              console.log('✅ Streaming complete');
-              break;
-            }
-            
-            // Write chunk to response
-            if (!res.write(value)) {
-              // Backpressure - wait for drain
-              await new Promise(resolve => res.once('drain', resolve));
-            }
-          }
-        } catch (error) {
-          console.error('❌ Stream error:', error);
-          if (!res.headersSent) {
-            res.status(500).json({ error: 'Streaming failed' });
-          } else {
-            res.end();
-          }
-        }
-      };
-      
-      // Handle client disconnect
-      req.on('close', () => {
-        console.log('⚠️  Client disconnected');
-        reader.cancel();
-      });
-      
-      pump();
-    } else {
-      // Non-streaming response
-      const data = await response.json();
-      console.log('✅ Received non-streaming response from agent');
-      res.json(data);
-    }
-  } catch (error) {
-    console.error('❌ Error sending message to agent:', error.message);
-    
-    if (!res.headersSent) {
-      // Check if this is a network error (DNS, connection failed, etc.)
-      if (error.cause?.code === 'ENOTFOUND' || error.message.includes('fetch failed') || error.cause?.code === 'ECONNREFUSED') {
-        const errorParts = [
-          ERROR_MESSAGES.ERROR_PREFIX,
-          'Failed to connect to Snowflake',
-          '💡 Tip: Check your SNOWFLAKE_HOST in the backend .env file. Make sure it\'s correct and accessible (format: account.snowflakecomputing.com)'
-        ];
-        return res.status(503).json({ errorParts });
-      }
-      
-      res.status(500).json({ error: sanitizeError(error) });
-    }
-  }
-});
 
 /**
  * Catch-all for undefined routes
@@ -1135,11 +560,22 @@ app.listen(PORT, () => {
   console.log(`📊 Database: ${SNOWFLAKE_CONFIG.database}`);
   console.log(`📁 Schema: ${SNOWFLAKE_CONFIG.schema}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  console.log('✨ Chat server integrated at /api/*');
   console.log('Available endpoints:');
   console.log('  GET  /health                          - Health check');
+  if (AUTH_MODE === 'OAUTH') {
+    console.log('  POST /auth/exchange                   - OAuth token exchange');
+    console.log('  POST /auth/logout                     - Logout');
+    console.log('  GET  /auth/status                     - Auth status');
+  }
   console.log('  GET  /api/agents                      - List all agents');
   console.log('  GET  /api/agents/:agentName           - Get agent details');
   console.log('  POST /api/agents/:agentName/messages  - Send message to agent');
+  console.log('  POST /api/threads                     - Create thread');
+  console.log('  GET  /api/threads                     - List threads');
+  console.log('  GET  /api/threads/:id                 - Get thread history');
+  console.log('  POST /api/threads/:id                 - Update thread name');
+  console.log('  DELETE /api/threads/:id               - Delete thread');
   console.log('\n✨ Ready to accept requests!\n');
 });
 
@@ -1153,4 +589,3 @@ process.on('SIGINT', () => {
   console.log('\n🛑 SIGINT received, shutting down gracefully...');
   process.exit(0);
 });
-
