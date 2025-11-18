@@ -9,7 +9,7 @@
 export const TEXT_CONSTANTS = {
   // Header and Navigation
   HEADER: {
-    MAIN_TITLE: 'Dash DesAI',
+    MAIN_TITLE: 'Snowflake Cortex AI Chat',
     SUBTITLE_PREFIX: 'Powered by',
     SUBTITLE_MIDDLE: 'Snowflake Cortex Agents',
     SUBTITLE_SUFFIX: 'Developed by',
@@ -19,7 +19,7 @@ export const TEXT_CONSTANTS = {
     DESCRIPTION: '',
     SHARE_BUTTON: 'Share',
     LOGO_PATH: '/images/icons/dash_snowboard_512.png',
-    LOGO_ALT: 'Dash DesAI - Powered by Snowflake Cortex Agents',
+    LOGO_ALT: 'Snowflake Cortex AI Chat - Powered by Snowflake Cortex Agents',
     BACK_BUTTON: '← Back',
     AGENT_SELECTOR: {
       LABEL: 'Select Agent',
@@ -68,7 +68,7 @@ export const TEXT_CONSTANTS = {
   },
     
     INPUT: {
-      PLACEHOLDER: 'Ask Dash DesAI...',
+      PLACEHOLDER: 'Ask Snowflake Cortex AI...',
       PLACEHOLDER_LOADING: 'Processing request. Please wait...',
       SEND_BUTTON: 'Send',
       SEND_BUTTON_LOADING: '⏳',

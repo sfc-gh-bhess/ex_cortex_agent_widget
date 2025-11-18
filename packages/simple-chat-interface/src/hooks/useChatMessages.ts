@@ -51,6 +51,129 @@ export const useChatMessages = (selectedAgent: string) => {
     }
   }, [backendUrl, applicationName]);
 
+  // Helper to transform API message to ChatMessage format
+  const transformApiMessage = useCallback((apiMessage: any, index: number): ChatMessage | null => {
+    try {
+      const messagePayload = typeof apiMessage.message_payload === 'string' 
+        ? JSON.parse(apiMessage.message_payload)
+        : apiMessage.message_payload;
+      
+      const baseMessage: ChatMessage = {
+        id: `${apiMessage.message_id}_${apiMessage.role}`,
+        text: '',
+        sender: apiMessage.role as 'user' | 'assistant',
+        timestamp: new Date(apiMessage.created_on),
+        status: 'sent'
+      };
+      
+      // Handle user messages
+      if (apiMessage.role === 'user') {
+        const content = messagePayload.content || [];
+        const textContent = content.find((c: any) => c.type === 'text');
+        baseMessage.text = textContent?.text || '';
+        return baseMessage;
+      }
+      
+      // Handle assistant messages - parse complex content array
+      if (apiMessage.role === 'assistant') {
+        const content = messagePayload.content || [];
+        let fullText = '';
+        const thinkingTexts: string[] = [];
+        const sqlQueries: any[] = [];
+        const charts: any[] = [];
+        const annotations: any[] = [];
+        
+        content.forEach((item: any) => {
+          if (item.type === 'text' && item.text) {
+            fullText += item.text;
+          } else if (item.type === 'thinking' && item.thinking?.text) {
+            thinkingTexts.push(item.thinking.text);
+          } else if (item.type === 'tool_result' && item.tool_result) {
+            // Extract SQL from tool results
+            const toolContent = item.tool_result.content || [];
+            toolContent.forEach((tc: any) => {
+              if (tc.json?.sql) {
+                sqlQueries.push({ sql: tc.json.sql });
+              }
+            });
+          } else if (item.type === 'chart' && item.chart?.chart_spec) {
+            try {
+              const chartSpec = typeof item.chart.chart_spec === 'string'
+                ? JSON.parse(item.chart.chart_spec)
+                : item.chart.chart_spec;
+              charts.push({ type: 'vega-lite', chart_spec: chartSpec });
+            } catch (e) {
+              // Skip invalid chart specs
+            }
+          }
+        });
+        
+        baseMessage.text = fullText;
+        baseMessage.thinkingTexts = thinkingTexts.length > 0 ? thinkingTexts : undefined;
+        baseMessage.sqlQueries = sqlQueries.length > 0 ? sqlQueries : undefined;
+        baseMessage.charts = charts.length > 0 ? charts : undefined;
+        
+        return baseMessage;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error transforming API message:', error, apiMessage);
+      return null;
+    }
+  }, []);
+  
+  // Load thread history from backend
+  const loadThread = useCallback(async (threadId: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`${backendUrl}/api/threads/${threadId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to load thread:', response.status);
+        return false;
+      }
+      
+      const threadData = await response.json();
+      const apiMessages = threadData.messages || [];
+      
+      // Sort messages by created_on timestamp (oldest first)
+      const sortedMessages = [...apiMessages].sort((a, b) => a.created_on - b.created_on);
+      
+      // Transform API messages to ChatMessage format
+      const transformedMessages: ChatMessage[] = [];
+      sortedMessages.forEach((apiMsg: any, index: number) => {
+        const chatMsg = transformApiMessage(apiMsg, index);
+        if (chatMsg) {
+          transformedMessages.push(chatMsg);
+        }
+      });
+      
+      // Set messages state
+      setMessages(transformedMessages);
+      
+      // Update thread state
+      threadIdRef.current = threadId;
+      
+      // Set parent message ID to the last message's message_id (after sorting)
+      if (sortedMessages.length > 0) {
+        const lastMessage = sortedMessages[sortedMessages.length - 1];
+        parentMessageIdRef.current = lastMessage.message_id;
+      }
+      
+      return true;
+      
+    } catch (error) {
+      console.error('Error loading thread:', error);
+      return false;
+    }
+  }, [backendUrl, transformApiMessage]);
+
   const sendMessage = useCallback(async (message: string) => {
     if (!message.trim() || isLoading) return;
 
@@ -485,7 +608,8 @@ export const useChatMessages = (selectedAgent: string) => {
     isLoading,
     sendMessage,
     cancelRequest,
-    clearMessages
+    clearMessages,
+    loadThread
   };
 };
 

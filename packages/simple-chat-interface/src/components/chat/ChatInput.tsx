@@ -26,7 +26,8 @@ import {
   KeyboardArrowUp as ArrowUpIcon,
   Stop as StopIcon,
   Refresh as RefreshIcon,
-  Mic as MicIcon
+  Mic as MicIcon,
+  History as HistoryIcon
 } from '@mui/icons-material';
 import { CHAT_TEXT } from '../../constants/textConstants';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
@@ -45,6 +46,7 @@ interface ChatInputProps {
   agents: Record<string, AgentConfig>;
   onAgentChange: (agent: string) => void;
   onNewChat: () => void;
+  onThreadPanelToggle: () => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
@@ -55,7 +57,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   selectedAgent,
   agents,
   onAgentChange,
-  onNewChat
+  onNewChat,
+  onThreadPanelToggle
 }) => {
   // Sort agents alphabetically for consistent ordering
   const sortedAgents = Object.entries(agents).sort(([, a], [, b]) => 
@@ -138,8 +141,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   // Render microphone button (reusable component)
   const renderMicrophoneButton = (inlineStyle = false) => (
-    <Tooltip title={getMicTooltip()} arrow>
-      <span>
+    <Tooltip 
+      title={getMicTooltip()} 
+      arrow
+      PopperProps={{
+        sx: { zIndex: 10000 }
+      }}
+    >
+      <Box component="span" sx={{ display: 'inline-flex' }}>
         <IconButton
           onClick={handleMicClick}
           disabled={isLoading || !isSpeechSupported}
@@ -222,7 +231,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         >
           <MicIcon />
         </IconButton>
-      </span>
+      </Box>
     </Tooltip>
   );
 
@@ -317,9 +326,58 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   </Select>
                 </FormControl>
                 
+                {/* Thread History Button */}
+                <Tooltip 
+                  title="Thread History" 
+                  arrow
+                  PopperProps={{
+                    sx: { zIndex: 10000 }
+                  }}
+                >
+                  <Box component="span" sx={{ display: 'inline-flex' }}>
+                    <IconButton
+                      onClick={onThreadPanelToggle}
+                      size="small"
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 1.5,
+                        backgroundColor: (theme) => theme.palette.mode === 'dark'
+                          ? alpha(theme.palette.grey[800], 0.6)
+                          : alpha(theme.palette.grey[100], 0.8),
+                        border: (theme) => theme.palette.mode === 'dark'
+                          ? `1px solid ${alpha(theme.palette.grey[600], 0.3)}`
+                          : `1px solid ${alpha(theme.palette.grey[300], 0.5)}`,
+                        color: 'primary.main',
+                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                        '&:hover': {
+                          backgroundColor: (theme) => theme.palette.mode === 'dark'
+                            ? alpha(theme.palette.primary.main, 0.1)
+                            : alpha(theme.palette.primary.main, 0.05),
+                          borderColor: (theme) => alpha(theme.palette.primary.main, 0.5),
+                          color: 'primary.main',
+                          transform: 'translateY(-1px)',
+                          boxShadow: (theme) => `0 4px 12px ${alpha(theme.palette.primary.main, 0.2)}`
+                        },
+                        '&:active': {
+                          transform: 'translateY(0px)'
+                        }
+                      }}
+                    >
+                      <HistoryIcon />
+                    </IconButton>
+                  </Box>
+                </Tooltip>
+                
                 {/* New Chat Button */}
-                <Tooltip title={CHAT_TEXT.INPUT.NEW_CHAT_TOOLTIP} arrow>
-                  <span>
+                <Tooltip 
+                  title={CHAT_TEXT.INPUT.NEW_CHAT_TOOLTIP} 
+                  arrow
+                  PopperProps={{
+                    sx: { zIndex: 10000 }
+                  }}
+                >
+                  <Box component="span" sx={{ display: 'inline-flex' }}>
                     <IconButton
                       onClick={onNewChat}
                       disabled={isLoading}
@@ -357,7 +415,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     >
                       <RefreshIcon />
                     </IconButton>
-                  </span>
+                  </Box>
                 </Tooltip>
               </Stack>
               
@@ -458,8 +516,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 <Tooltip 
                   title={isLoading ? CHAT_TEXT.INPUT.STOP_TOOLTIP : CHAT_TEXT.INPUT.SEND_TOOLTIP} 
                   arrow
+                  PopperProps={{
+                    sx: { zIndex: 10000 }
+                  }}
                 >
-                  <span>
+                  <Box component="span" sx={{ display: 'inline-flex' }}>
                     <Button
                       type="submit"
                       variant="contained"
@@ -501,7 +562,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     >
                       {isLoading ? <StopIcon /> : <ArrowUpIcon />}
                     </Button>
-                  </span>
+                  </Box>
                 </Tooltip>
               </Stack>
             </Stack>

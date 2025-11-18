@@ -300,7 +300,7 @@ export const FloatingChatInterface: React.FC<FloatingChatInterfaceProps> = ({
         buttonPosition={buttonPosition}
         initialState={initialState}
       >
-        <ChatInterface />
+        <ChatInterface containerMode="container" />
       </OverlayWrapper>
     </ConfigProvider>
   );

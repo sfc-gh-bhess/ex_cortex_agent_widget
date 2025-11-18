@@ -163,7 +163,7 @@ const corsOptions = {
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Accept']
 };
 
@@ -765,6 +765,193 @@ app.post('/api/threads', authenticate, refreshTokenIfNeeded, async (req, res) =>
 
   } catch (error) {
     console.error('Error creating thread:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * List all threads for the user
+ * GET /api/threads
+ */
+app.get('/api/threads', authenticate, refreshTokenIfNeeded, async (req, res) => {
+  try {
+    // Build Snowflake API URL for listing threads
+    const snowflakeUrl = `https://${SNOWFLAKE_CONFIG.host}/api/v2/cortex/threads`;
+    
+    // Get auth headers (handles both PAT and OAUTH modes)
+    const headers = getSnowflakeAuthHeaders(req);
+    
+    console.log('Fetching thread list...');
+    
+    // Call Snowflake Threads API
+    const response = await fetch(snowflakeUrl, {
+      method: 'GET',
+      headers
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Snowflake thread list error:', response.status, errorText);
+      return res.status(response.status).json({ 
+        error: `Failed to list threads: ${response.statusText}`,
+        details: errorText
+      });
+    }
+    
+    // Return the raw response from Snowflake as-is (array of threads)
+    const threadsArray = await response.json();
+    console.log(`Retrieved ${threadsArray?.length || 0} threads`);
+    
+    res.json(threadsArray);
+    
+  } catch (error) {
+    console.error('Error listing threads:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Get thread history by ID
+ * GET /api/threads/:threadId
+ */
+app.get('/api/threads/:threadId', authenticate, refreshTokenIfNeeded, async (req, res) => {
+  try {
+    const { threadId } = req.params;
+    
+    // Build Snowflake API URL for thread retrieval
+    const snowflakeUrl = `https://${SNOWFLAKE_CONFIG.host}/api/v2/cortex/threads/${threadId}`;
+    
+    // Get auth headers (handles both PAT and OAUTH modes)
+    const headers = getSnowflakeAuthHeaders(req);
+    
+    console.log(`Fetching thread history for thread: ${threadId}`);
+    
+    // Call Snowflake Threads API
+    const response = await fetch(snowflakeUrl, {
+      method: 'GET',
+      headers
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Snowflake thread fetch error:', response.status, errorText);
+      return res.status(response.status).json({ 
+        error: `Failed to fetch thread: ${response.statusText}`,
+        details: errorText
+      });
+    }
+    
+    // Return the raw response from Snowflake as-is
+    const threadData = await response.json();
+    console.log(`Retrieved thread ${threadId} with ${threadData.messages?.length || 0} messages`);
+    
+    res.json(threadData);
+    
+  } catch (error) {
+    console.error('Error fetching thread:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Update thread name
+ * POST /api/threads/:threadId
+ */
+app.post('/api/threads/:threadId', authenticate, refreshTokenIfNeeded, async (req, res) => {
+  try {
+    const { threadId } = req.params;
+    const { thread_name } = req.body;
+    
+    // Validate thread_name
+    if (!thread_name || typeof thread_name !== 'string') {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        error: 'thread_name is required and must be a string' 
+      });
+    }
+    
+    // Build Snowflake API URL for thread update
+    const snowflakeUrl = `https://${SNOWFLAKE_CONFIG.host}/api/v2/cortex/threads/${threadId}`;
+    
+    // Get auth headers (handles both PAT and OAUTH modes)
+    const headers = getSnowflakeAuthHeaders(req);
+    
+    console.log(`Updating thread ${threadId} name to: ${thread_name}`);
+    
+    // Call Snowflake Threads API
+    const response = await fetch(snowflakeUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ thread_name })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Snowflake thread update error:', response.status, errorText);
+      return res.status(response.status).json({ 
+        error: `Failed to update thread: ${response.statusText}`,
+        details: errorText
+      });
+    }
+    
+    // Return success response
+    console.log(`Thread ${threadId} updated successfully`);
+    res.json({ success: true, thread_id: threadId, thread_name });
+    
+  } catch (error) {
+    console.error('Error updating thread:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Delete thread by ID
+ * DELETE /api/threads/:threadId
+ */
+app.delete('/api/threads/:threadId', authenticate, refreshTokenIfNeeded, async (req, res) => {
+  try {
+    const { threadId } = req.params;
+    
+    // Build Snowflake API URL for thread deletion
+    const snowflakeUrl = `https://${SNOWFLAKE_CONFIG.host}/api/v2/cortex/threads/${threadId}`;
+    
+    // Get auth headers (handles both PAT and OAUTH modes)
+    const headers = getSnowflakeAuthHeaders(req);
+    
+    console.log(`Deleting thread: ${threadId}`);
+    
+    // Call Snowflake Threads API
+    const response = await fetch(snowflakeUrl, {
+      method: 'DELETE',
+      headers
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Snowflake thread delete error:', response.status, errorText);
+      return res.status(response.status).json({ 
+        error: `Failed to delete thread: ${response.statusText}`,
+        details: errorText
+      });
+    }
+    
+    // Return success response
+    console.log(`Thread ${threadId} deleted successfully`);
+    res.json({ success: true, thread_id: threadId });
+    
+  } catch (error) {
+    console.error('Error deleting thread:', error);
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
       error: ERROR_MESSAGES.TIPS.UNEXPECTED_ERROR,
       details: error.message 

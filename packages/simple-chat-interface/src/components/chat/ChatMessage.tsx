@@ -64,6 +64,17 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   const theme = useTheme();
   const [copySuccess, setCopySuccess] = useState(false);
 
+  // Format timestamp as YYYY-MM-DD HH:MM:SS
+  const formatTimestamp = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  };
+
   // Handle copy to clipboard
   const handleCopy = async () => {
     try {
@@ -88,7 +99,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         sx={{
           display: 'flex',
           flexDirection: 'column',
-          alignSelf: message.sender === 'user' ? 'center' : 'flex-start',
+          alignSelf: message.sender === 'user' ? 'flex-end' : 'flex-start',
           maxWidth: { 
             xs: message.sender === 'user' ? '85%' : '100%',
             sm: message.sender === 'user' ? '75%' : '98%'
@@ -314,41 +325,37 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       {message.sender === 'user' && message.text && message.text.trim().length > 0 && (
         <Stack 
           direction="row" 
-          spacing={0.5} 
+          spacing={1} 
           sx={{ 
             mt: 0.5,
-            justifyContent: 'flex-end',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
             opacity: 0.7,
             '&:hover': { opacity: 1 },
             transition: 'opacity 0.2s'
           }}
         >
-          {/* Copy Button */}
-          <Tooltip 
-            title={copySuccess ? MESSAGE_LABELS.COPY_SUCCESS : MESSAGE_LABELS.COPY_USER_MESSAGE_TOOLTIP}
-            arrow
+          {/* Timestamp */}
+          <Typography 
+            variant="caption" 
+            color="text.secondary" 
+            sx={{ 
+              fontSize: '0.75rem',
+              fontFamily: 'monospace'
+            }}
           >
-            <IconButton
-              onClick={handleCopy}
-              size="small"
-              sx={{
-                color: 'text.secondary',
-                padding: '4px',
-                '&:hover': {
-                  color: 'primary.main',
-                  backgroundColor: alpha(theme.palette.primary.main, 0.1)
-                }
-              }}
-            >
-              <CopyIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Tooltip>
+            {formatTimestamp(message.timestamp)}
+          </Typography>
 
-          {/* Re-ask Button */}
-          {onResendMessage && (
-            <Tooltip title={MESSAGE_LABELS.RESEND_MESSAGE_TOOLTIP} arrow>
+          {/* Action Buttons */}
+          <Stack direction="row" spacing={0.5}>
+            {/* Copy Button */}
+            <Tooltip 
+              title={copySuccess ? MESSAGE_LABELS.COPY_SUCCESS : MESSAGE_LABELS.COPY_USER_MESSAGE_TOOLTIP}
+              arrow
+            >
               <IconButton
-                onClick={handleResend}
+                onClick={handleCopy}
                 size="small"
                 sx={{
                   color: 'text.secondary',
@@ -359,10 +366,30 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                   }
                 }}
               >
-                <ReplayIcon sx={{ fontSize: 18 }} />
+                <CopyIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </Tooltip>
-          )}
+
+            {/* Re-ask Button */}
+            {onResendMessage && (
+              <Tooltip title={MESSAGE_LABELS.RESEND_MESSAGE_TOOLTIP} arrow>
+                <IconButton
+                  onClick={handleResend}
+                  size="small"
+                  sx={{
+                    color: 'text.secondary',
+                    padding: '4px',
+                    '&:hover': {
+                      color: 'primary.main',
+                      backgroundColor: alpha(theme.palette.primary.main, 0.1)
+                    }
+                  }}
+                >
+                  <ReplayIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Stack>
         </Stack>
       )}
 
@@ -373,21 +400,34 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           spacing={1} 
           sx={{ 
             mt: 0.5,
-            justifyContent: 'center',
+            justifyContent: 'space-between',
             alignItems: 'center',
             opacity: 0.7,
             '&:hover': { opacity: 1 },
             transition: 'opacity 0.2s'
           }}
         >
-          {/* Disclaimer - Hidden on mobile */}
+          {/* Timestamp */}
+          <Typography 
+            variant="caption" 
+            color="text.secondary" 
+            sx={{ 
+              fontSize: '0.75rem',
+              fontFamily: 'monospace'
+            }}
+          >
+            {formatTimestamp(message.timestamp)}
+          </Typography>
+
+          {/* Center section with Disclaimer - Hidden on mobile */}
           <Typography 
             variant="caption" 
             color="text.secondary" 
             sx={{ 
               display: { xs: 'none', sm: 'block' },
               fontSize: '0.8rem',
-              textAlign: 'center'
+              textAlign: 'center',
+              flex: 1
             }}
           >
             {MESSAGE_LABELS.DISCLAIMER}

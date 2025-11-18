@@ -22,14 +22,16 @@ import { EmptyState } from './chat/EmptyState';
 import { StarterQuestions } from './chat/StarterQuestions';
 import { ChatMessage } from './chat/ChatMessage';
 import { ChatInput } from './chat/ChatInput';
+import { ThreadPanel } from './ThreadPanel';
 import { STATUS_TEXT, ERROR_TEXT } from '../constants/textConstants';
 
 export interface ChatInterfaceProps {
   className?: string;
   style?: React.CSSProperties;
+  containerMode?: 'viewport' | 'container'; // Controls ThreadPanel positioning
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ className, style }) => {
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ className, style, containerMode = 'viewport' }) => {
   const theme = useTheme();
   const { displayConfig } = useConfig();
   
@@ -45,8 +47,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ className, style }
   // Selected agent state
   const [selectedAgent, setSelectedAgent] = useState<string>('');
   
+  // Thread management state
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [threadPanelOpen, setThreadPanelOpen] = useState(false);
+  
   // Chat messages and streaming
-  const { messages, isLoading, sendMessage, cancelRequest, clearMessages } = useChatMessages(selectedAgent);
+  const { messages, isLoading, sendMessage, cancelRequest, clearMessages, loadThread } = useChatMessages(selectedAgent);
   
   // Accordion states for different sections
   const thinkingAccordion = useAccordionState();
@@ -201,6 +207,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ className, style }
   const handleNewChat = useCallback(() => {
     clearMessages();
     setInputText('');
+    setSelectedThreadId(null); // Clear thread selection
     thinkingAccordion.reset();
     sqlQueriesAccordion.reset();
     chartsAccordion.reset();
@@ -209,6 +216,28 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ className, style }
     setStarterQuestionsExpanded(true);
     refreshAgents();
   }, [clearMessages, thinkingAccordion, sqlQueriesAccordion, chartsAccordion, annotationsAccordion, refreshAgents]);
+
+  // Handle thread selection
+  const handleThreadSelect = useCallback(async (threadId: string | null) => {
+    if (threadId === null) {
+      // New chat
+      handleNewChat();
+      return;
+    }
+    
+    // Load thread history
+    const success = await loadThread(threadId);
+    if (success) {
+      setSelectedThreadId(threadId);
+      setInputText('');
+      thinkingAccordion.reset();
+      sqlQueriesAccordion.reset();
+      chartsAccordion.reset();
+      annotationsAccordion.reset();
+      setManuallyToggledCharts(new Set());
+      setStarterQuestionsExpanded(false); // Hide starter questions when loading thread
+    }
+  }, [handleNewChat, loadThread, thinkingAccordion, sqlQueriesAccordion, chartsAccordion, annotationsAccordion]);
 
   // Handle chart toggle with manual tracking
   const handleChartToggle = useCallback((messageId: string) => {
@@ -356,6 +385,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ className, style }
   return (
     <Box 
       className={className}
+      data-chat-container={containerMode === 'container' ? 'true' : undefined}
       sx={{ 
         display: 'flex', 
         flexDirection: 'column', 
@@ -363,9 +393,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ className, style }
         width: '100%',
         bgcolor: 'background.default', 
         color: 'text.primary',
+        position: containerMode === 'container' ? 'relative' : 'static',
+        overflow: containerMode === 'container' ? 'hidden' : 'visible',
         ...style
       }}
     >
+      {/* Thread Panel */}
+      <ThreadPanel
+        selectedThreadId={selectedThreadId}
+        onThreadSelect={handleThreadSelect}
+        onNewChat={handleNewChat}
+        containerMode={containerMode}
+        open={threadPanelOpen}
+        onToggle={() => setThreadPanelOpen(prev => !prev)}
+      />
       {/* Chat Area */}
       <Container maxWidth="lg" sx={{ 
         flex: 1, 
@@ -443,6 +484,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ className, style }
         agents={agentConfig ? getVisibleAgents() : {}}
         onAgentChange={handleAgentChange}
         onNewChat={handleNewChat}
+        onThreadPanelToggle={() => setThreadPanelOpen(prev => !prev)}
       />
     </Box>
   );
