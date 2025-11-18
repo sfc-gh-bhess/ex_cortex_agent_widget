@@ -23,10 +23,30 @@ const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 require('dotenv').config();
-const { HTTP_STATUS, ERROR_MESSAGES, CONFIG } = require('./constants');
 const { createChatRouter } = require('./chatServer');
 
 const app = express();
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const HTTP_STATUS = {
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  NOT_FOUND: 404
+};
+
+const ERROR_MESSAGES = {
+  NOT_AUTHENTICATED: 'Not authenticated'
+};
+
+const CONFIG = {
+  DEFAULT_PORT: 3001,
+  RATE_LIMIT_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
+  RATE_LIMIT_MAX_REQUESTS: 100
+};
+
 // Render uses PORT, local dev uses SERVER_PORT
 const PORT = process.env.PORT || process.env.SERVER_PORT || CONFIG.DEFAULT_PORT;
 
