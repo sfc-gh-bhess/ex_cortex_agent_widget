@@ -2,6 +2,8 @@
 
 A complete chat application powered by [Snowflake Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) via the [REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api). This project demonstrates how to integrate the reusable `simple-chat-interface` package and `chatServer.js` backend module into a production-ready application with authentication, threading, and more.
 
+Note: This repository is heavily based on the wonderful [Snowflake-Labs repository](https://github.com/Snowflake-Labs/awesome-custom-cortex-agents-rest-api-react-app)
+
 ## 🎯 What's Included
 
 This repository contains:
