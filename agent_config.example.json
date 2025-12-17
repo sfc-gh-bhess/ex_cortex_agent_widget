@@ -1,0 +1,43 @@
+{
+  "model": "claude-4-sonnet",
+  "description": "Example Cortex Agent with inline specification",
+  "experimental": {
+    "EnableRelatedQueries": true
+  },
+  "tools": [
+    {
+      "tool_spec": {
+        "type": "cortex_search",
+        "name": "search1"
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "cortex_analyst_text_to_sql",
+        "name": "analyst1"
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "data_to_chart",
+        "name": "data_to_chart"
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "sql_exec",
+        "name": "sql_exec"
+      }
+    }
+  ],
+  "tool_resources": {
+    "analyst1": {
+      "semantic_view": "YOUR_DATABASE.YOUR_SCHEMA.YOUR_SEMANTIC_VIEW"
+    },
+    "search1": {
+      "name": "YOUR_DATABASE.YOUR_SCHEMA.YOUR_SEARCH_SERVICE",
+      "max_results": 10
+    }
+  }
+}
+

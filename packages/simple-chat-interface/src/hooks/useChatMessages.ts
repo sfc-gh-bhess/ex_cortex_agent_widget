@@ -433,9 +433,15 @@ export const useChatMessages = (selectedAgent: string) => {
                   }));
                 }
               } else if (currentEvent === 'response.chart') {
-                if (data.chart_spec) {
+                // Extract chart_spec, ignoring extra fields like content_index and tool_use_id
+                const chart_spec = data.chart_spec || data;
+                if (chart_spec) {
                   try {
-                    const chartSpec = JSON.parse(data.chart_spec);
+                    // Parse the chart spec (it's a stringified JSON)
+                    const chartSpec = typeof chart_spec === 'string' 
+                      ? JSON.parse(chart_spec)
+                      : chart_spec;
+                    
                     const chartContent: ChartContent = {
                       type: 'vega-lite' as const,
                       chart_spec: chartSpec
@@ -454,7 +460,7 @@ export const useChatMessages = (selectedAgent: string) => {
                         : msg
                     ));
                   } catch (parseError) {
-                    // Skip malformed chart data
+                    console.error('Failed to parse chart specification:', parseError);
                   }
                 }
               } else if (currentEvent === 'response.text.annotation') {

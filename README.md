@@ -1,302 +1,93 @@
 # Snowflake Cortex Agents Chat Application
 
-A complete chat application powered by [Snowflake Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) via the [REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api). This project demonstrates how to integrate the reusable `simple-chat-interface` package and `chatServer.js` backend module into a production-ready application with authentication, threading, and more.
+Drop-in chat widget + Express proxy for Snowflake Cortex Agents (v1 and v2) with PAT or OAuth, threading, and ready-to-copy integration points.
 
-Note: This repository is heavily based on the wonderful [Snowflake-Labs repository](https://github.com/Snowflake-Labs/awesome-custom-cortex-agents-rest-api-react-app)
+## What this repo gives you
+- Frontend widget (`packages/simple-chat-interface/`) you can embed in any React app.
+- Backend routers (`server/chatServer.js` for v2, `server/chatServerV1.js` for v1) you can mount in any Express app.
+- Sample full app (create-react-app + Express) wired together with auth, threading, and streaming.
 
-## 🎯 What's Included
+## Quick start (5 minutes)
+1. Install deps: `npm install`
+2. Copy envs:
+   - Backend: `cp env.backend.example .env` (pick the closest `env.*.example` from the modes table below and copy its values into `.env`)
+   - Frontend: `cp env.frontend.example .env.local`
+3. Fill `.env` with your Snowflake host/db/schema and PAT or OAuth settings.
+4. Validate config: `npm run check:config` (fails fast if required vars are missing).
+5. Run everything: `npm run start:all` → frontend `http://localhost:3000`, backend `http://localhost:3001`.
 
-This repository contains:
+## Choose your mode
+| Mode | When to use | Key env vars | Example file | Run tip |
+| --- | --- | --- | --- | --- |
+| v2 (default) | Use Snowflake agent registry + threads API | `AGENT_API_VERSION` (default v2), `AUTH_MODE` (PAT or OAUTH) | `env.v2.example` | `npm run check:config && npm run start:all` |
+| v2 inline spec | One fixed agent with custom inline spec, still v2 API | `FIXED_AGENT_NAME`, `AGENT_SPEC_FILE`, `AUTH_MODE` | `env.v2.inline.example` | Same as above |
+| v1 | Legacy API + SQL execution + in-memory threads | `AGENT_API_VERSION=v1`, `FIXED_AGENT_NAME`, `AGENT_SPEC_FILE`, `SNOWFLAKE_WAREHOUSE`, `AUTH_MODE` | `env.v1.example` | `AGENT_API_VERSION=v1 npm run start:server` |
+| v1 hybrid | RLS via OAuth claims + shared PAT for Snowflake | v1 vars above + `SNOWFLAKE_PAT`, `SESSION_VAR_NAME`, `CLAIM_KEY`, OAuth + `IDP_JWKS_URL` | `env.hybrid.example` | `AUTH_MODE=OAUTH npm run start:server` |
 
-1. **Reusable React Package** (`packages/simple-chat-interface/`) - Drop-in chat components
-2. **Reusable Backend Module** (`server/chatServer.js`) - Express router for Cortex Agents API
-3. **Sample Application** - Complete demo app showing how to integrate both
+## Architecture at a glance
+```mermaid
+flowchart LR
+  userApp[ReactApp]
+  chatWidget[ChatWidget]
+  backend[ExpressAPI]
+  v2Router[chatServerV2]
+  v1Router[chatServerV1]
+  snowflake[SnowflakeCortex]
 
-## 📦 Quick Start (Sample App)
-
-### Prerequisites
-
-- **Node.js** >= 18.0.0
-- **npm** >= 9.0.0
-- **Snowflake Account** with:
-  - Access to Snowflake Intelligence
-  - At least one Cortex Agent created ([Guide](https://quickstarts.snowflake.com/guide/getting-started-with-snowflake-intelligence/))
-  - Personal Access Token (PAT) or OAuth configured
-
-### Installation
-
-1. **Clone the repository**
-
-```bash
-git clone <repository-url>
-cd awesome-custom-cortex-agents-rest-api-react-app
+  userApp --> chatWidget
+  chatWidget --> backend
+  backend -->|AGENT_API_VERSION=v2| v2Router --> snowflake
+  backend -->|AGENT_API_VERSION=v1| v1Router --> snowflake
 ```
 
-2. **Install dependencies**
+## Config reference (backend `.env`)
+- Core: `SNOWFLAKE_HOST`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`.
+- API version: `AGENT_API_VERSION` (`v2` default, `v1` requires inline spec + warehouse).
+- Auth: `AUTH_MODE` (`PAT` → `SNOWFLAKE_PAT`; `OAUTH` → `OAUTH_TOKEN_URL`, `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_REDIRECT_URI`).
+- Inline spec: `FIXED_AGENT_NAME` + `AGENT_SPEC_FILE` (JSON).
+- v1 SQL: `SNOWFLAKE_WAREHOUSE`.
+- Hybrid (v1): `SESSION_VAR_NAME`, `CLAIM_KEY`, `SNOWFLAKE_PAT`, `IDP_JWKS_URL` (+ optional `IDP_ISSUER`, `IDP_AUDIENCE`).
+- Quick check: `npm run check:config`.
 
-```bash
-npm install
+## Run, demo, and self-test
+- Validate: `npm run check:config`.
+- Start everything: `npm run start:all` (or backend only `npm run start:server`).
+- Demo presets: `npm run demo:pat` (shared PAT), `npm run demo:oauth` (OAuth login).
+- Smoke tests (after server is up):
+  - Health: `curl -i http://localhost:3001/health`
+  - Agents (v2 or inline): `curl -i http://localhost:3001/api/agents`
+  - Send message (replace `<agent>` and payload as needed):
+    ```bash
+    curl -N -X POST http://localhost:3001/api/agents/<agent>/messages \
+      -H "Content-Type: application/json" \
+      -d '{"messages":[{"role":"user","content":"hello"}]}'
+    ```
+  - v1 SQL check: ensure `SNOWFLAKE_WAREHOUSE` is running and PAT has execute privileges.
+
+## Embed in your own app
+- Frontend: `npm install ./packages/simple-chat-interface` then wrap your app with `ChatThemeProvider` and drop in `FloatingChatInterface` pointing at your backend URL.
+- Backend: mount the router:
+  ```js
+  const { createChatRouter } = require('./server/chatServer');
+  app.use('/api', createChatRouter({
+    snowflakeHost: process.env.SNOWFLAKE_HOST,
+    snowflakeDatabase: process.env.SNOWFLAKE_DATABASE,
+    snowflakeSchema: process.env.SNOWFLAKE_SCHEMA,
+    getAuthToken: (req) => process.env.SNOWFLAKE_PAT || req.tokens?.accessToken
+  }));
+  ```
+  For v1, swap to `createV1ChatRouter` and ensure `AGENT_SPEC_FILE` + `SNOWFLAKE_WAREHOUSE` are set.
+
+## Project layout
+```
+server/                   Express server + routers + config helpers
+packages/simple-chat-interface/   React widget package
+src/                     Sample CRA frontend
+env.*.example            Mode-specific env templates
+summary_docs/            Teaching and change summaries
 ```
 
-This installs dependencies for:
-- The main sample application
-- The `simple-chat-interface` package
-
-3. **Configure environment variables**
-
-**Backend Configuration:**
-```bash
-cp env.backend.example .env
-```
-
-Edit `.env` and configure:
-
-```bash
-# Snowflake Connection
-SNOWFLAKE_HOST=your-account.snowflakecomputing.com
-SNOWFLAKE_DATABASE=your_database
-SNOWFLAKE_SCHEMA=your_schema
-
-# Authentication Mode: "PAT" or "OAUTH"
-AUTH_MODE=PAT
-
-# PAT Mode: Provide your Personal Access Token
-SNOWFLAKE_PAT=your_pat_token
-
-# OAuth Mode: Provide these (if using OAUTH)
-# IDP_LOGIN_URL=https://your-idp.com/oauth/authorize
-# IDP_TOKEN_URL=https://your-idp.com/oauth/token
-# OAUTH_CLIENT_ID=your_client_id
-# OAUTH_CLIENT_SECRET=your_client_secret
-# OAUTH_REDIRECT_URI=http://localhost:3001/auth/callback
-
-# CORS (optional, defaults to http://localhost:3000)
-ALLOWED_ORIGINS=http://localhost:3000
-
-# Server Port (optional, defaults to 3001)
-PORT=3001
-```
-
-**Frontend Configuration:**
-```bash
-cp env.frontend.example .env.local
-```
-
-Edit `.env.local` and configure:
-
-```bash
-# Backend API URL
-REACT_APP_BACKEND_URL=http://localhost:3001
-
-# Authentication Mode: must match backend AUTH_MODE
-REACT_APP_AUTH_MODE=PAT
-
-# OAuth Mode: Provide login URL (if using OAUTH)
-# REACT_APP_OAUTH_LOGIN_URL=http://localhost:3001/auth/login
-
-# Application Name (for thread tracking)
-REACT_APP_APPLICATION_NAME=dash_desai
-```
-
-4. **Start the application**
-
-```bash
-npm run start:all
-```
-
-This starts:
-- Frontend on [http://localhost:3000](http://localhost:3000)
-- Backend on [http://localhost:3001](http://localhost:3001)
-
-## 🔐 Authentication Modes
-
-This application supports two authentication modes:
-
-### PAT Mode (Simple)
-- All users share the same Personal Access Token
-- Best for: Prototypes, demos, internal tools
-- Configuration: Set `AUTH_MODE=PAT` in both frontend and backend
-
-### OAuth Mode (Production)
-- Each user authenticates with an external Identity Provider
-- Each user gets their own Snowflake access token
-- Best for: Production applications with user-specific access
-- Configuration: Set `AUTH_MODE=OAUTH` in both frontend and backend
-
-**To switch modes:**
-```bash
-# Backend
-AUTH_MODE=PAT npm run start:server
-
-# Frontend  
-REACT_APP_AUTH_MODE=PAT npm start
-```
-
-## 🧩 Using the Reusable Components
-
-### Frontend Package Integration
-
-Add the chat interface to **your existing React app**:
-
-```bash
-npm install ./packages/simple-chat-interface
-```
-
-```tsx
-import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
-
-function App() {
-  return (
-    <ChatThemeProvider>
-      <YourExistingApp />
-      <FloatingChatInterface backendUrl="http://localhost:3001" />
-    </ChatThemeProvider>
-  );
-}
-```
-
-See [`packages/simple-chat-interface/README.md`](packages/simple-chat-interface/README.md) for full documentation.
-
-### Backend Module Integration
-
-Add the chat server to **your existing Express app**:
-
-1. Copy `server/chatServer.js` to your project
-2. Integrate it:
-
-```javascript
-const { createChatRouter } = require('./chatServer');
-
-const chatRouter = createChatRouter({
-  snowflakeHost: process.env.SNOWFLAKE_HOST,
-  snowflakeDatabase: process.env.SNOWFLAKE_DATABASE,
-  snowflakeSchema: process.env.SNOWFLAKE_SCHEMA,
-  getAuthToken: (req) => process.env.SNOWFLAKE_PAT // or your auth logic
-});
-
-app.use('/api', chatRouter);
-```
-
-See [`server/CHAT_SERVER_README.md`](server/CHAT_SERVER_README.md) for full documentation.
-
-## ✨ Features
-
-- 🤖 **Multi-Agent Support** - Switch between different Cortex Agents
-- 🧵 **Thread Management** - Create, list, and revisit conversation threads
-- 💭 **Thinking Visualization** - See the agent's reasoning process (optional)
-- 📊 **Chart Support** - Automatic visualization with Vega-Lite
-- 🗣️ **Voice Input** - Speech-to-text for hands-free interaction
-- 🎨 **Dark/Light Themes** - Automatic theme switching
-- 🔐 **Dual Auth Modes** - PAT or OAuth, configurable without code changes
-- 📱 **Responsive Design** - Works on desktop, tablet, and mobile
-- ♿ **Accessible** - WCAG 2.1 compliant
-
-## 📂 Project Structure
-
-```
-.
-├── packages/simple-chat-interface/    # Reusable React chat package
-│   ├── src/
-│   │   ├── components/               # React components
-│   │   ├── hooks/                    # Custom hooks
-│   │   ├── services/                 # API services
-│   │   └── index.ts                  # Package exports
-│   └── README.md                     # Package documentation
-│
-├── server/
-│   ├── chatServer.js                 # Reusable Express router module
-│   ├── server.js                     # Sample application server
-│   └── CHAT_SERVER_README.md         # Backend integration docs
-│
-├── src/                              # Sample application frontend
-│   ├── components/                   # App-specific components
-│   ├── contexts/                     # React contexts (Auth, Theme)
-│   ├── pages/                        # Login, OAuth callback pages
-│   ├── services/                     # Auth service
-│   └── index.tsx                     # App entry point
-│
-├── .env                              # Backend config (gitignored)
-├── .env.local                        # Frontend config (gitignored)
-├── env.backend.example               # Backend config template
-├── env.frontend.example              # Frontend config template
-└── README.md                         # This file
-```
-
-## 🔧 Development
-
-### Run frontend only:
-```bash
-npm start
-```
-
-### Run backend only:
-```bash
-npm run start:server
-```
-
-### Build for production:
-```bash
-npm run build
-```
-
-### Build with custom backend URL:
-```bash
-REACT_APP_BACKEND_URL=https://your-api.com npm run build
-```
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**1. Cannot connect to backend**
-- Ensure backend is running: `npm run start:server`
-- Check `REACT_APP_BACKEND_URL` in `.env.local`
-
-**2. HTTP 401 Unauthorized**
-- **PAT Mode**: Verify `SNOWFLAKE_PAT` in `.env` is valid and not expired
-- **OAuth Mode**: Check OAuth configuration and token refresh logic
-
-**3. HTTP 400 Bad Request**
-- Verify `SNOWFLAKE_DATABASE` and `SNOWFLAKE_SCHEMA` exist
-- Ensure you have access to them in Snowflake
-
-**4. HTTP 404 Agent Not Found**
-- Check that agents exist in your database/schema
-- Agent names are case-sensitive
-
-**5. Thread panel not appearing**
-- Only available in `FloatingChatInterface`
-- Click the history icon (📜) in the chat input area
-
-**6. Voice input not working**
-- Requires Chrome, Edge, or Safari (not Firefox)
-- Must grant microphone permissions
-- HTTPS required in production
-
-**7. Port already in use**
-```bash
-# Kill frontend (port 3000)
-lsof -ti:3000 | xargs kill -9
-
-# Kill backend (port 3001)
-lsof -ti:3001 | xargs kill -9
-```
-
-## 📖 Documentation
-
-- [Frontend Package Documentation](packages/simple-chat-interface/README.md)
-- [Backend Module Documentation](server/CHAT_SERVER_README.md)
-- [Snowflake Cortex Agents Docs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents)
-- [Cortex Agents REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api)
-
-## 📝 License
-
-MIT
-
-## 💬 Questions
-
-For questions, comments, or feedback, reach out to [Dash DesAI](https://www.linkedin.com/in/dash-desai/).
-
----
-
-**Made with ❄️ using Snowflake Cortex**
+## Troubleshooting (fast lane)
+- 401 in OAuth: confirm `OAUTH_*` and `IDP_JWKS_URL`; clear cookies and retry.
+- 400 from Snowflake: verify database/schema and agent names exist (case-sensitive).
+- v1 SQL fails: check `SNOWFLAKE_WAREHOUSE` running and PAT permissions; rerun `npm run check:config`.

@@ -49,6 +49,7 @@
  */
 
 const express = require('express');
+const chatUtils = require('./chatUtils');
 
 // Constants
 const HTTP_STATUS = {
@@ -70,6 +71,9 @@ const MAX_AGENT_NAME_LENGTH = 100;
  * @param {string} config.snowflakeSchema - Schema name
  * @param {Function} config.getAuthToken - Function to get auth token from request
  * @param {Function} [config.onError] - Optional error handler callback
+ * @param {string} [config.FIXED_AGENT_NAME] - Fixed agent name (optional)
+ * @param {string} [config.AGENT_SPEC_FILE] - Agent spec file path (optional)
+ * @param {Object} [config.agentSpec] - Loaded agent specification (optional)
  * @returns {express.Router} Configured Express router
  */
 function createChatRouter(config) {
@@ -146,6 +150,12 @@ function createChatRouter(config) {
    */
   router.get('/agents', async (req, res) => {
     try {
+      // Handle fixed agent or inline spec mode
+      if (config.FIXED_AGENT_NAME || config.AGENT_SPEC_FILE) {
+        console.log('📋 Returning fixed agent configuration');
+        return res.json(chatUtils.buildFakeAgentList(config));
+      }
+      
       const endpoint = `https://${snowflakeHost}/api/v2/databases/${snowflakeDatabase}/schemas/${snowflakeSchema}/agents`;
       
       console.log('📡 Fetching agents list from Snowflake...');
@@ -184,6 +194,17 @@ function createChatRouter(config) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
           error: 'Invalid agent name'
         });
+      }
+      
+      // Check if agent is allowed in fixed mode
+      if (!chatUtils.isAgentAllowed(agentName, config)) {
+        return res.status(403).json({ error: 'Agent not allowed' });
+      }
+      
+      // Handle fixed agent or inline spec mode
+      if (config.FIXED_AGENT_NAME || config.AGENT_SPEC_FILE) {
+        console.log(`📋 Returning fixed agent details for: ${agentName}`);
+        return res.json(chatUtils.buildFakeAgentResponse(config));
       }
       
       const endpoint = `https://${snowflakeHost}/api/v2/databases/${snowflakeDatabase}/schemas/${snowflakeSchema}/agents/${agentName}`;
@@ -227,6 +248,11 @@ function createChatRouter(config) {
         });
       }
       
+      // Check if agent is allowed
+      if (!chatUtils.isAgentAllowed(agentName, config)) {
+        return res.status(403).json({ error: 'Agent not allowed' });
+      }
+      
       if (!requestBody.messages || !Array.isArray(requestBody.messages) || requestBody.messages.length === 0) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
           error: 'Request body must include messages array with at least one message'
@@ -235,12 +261,31 @@ function createChatRouter(config) {
       
       console.log(`💬 Sending message to agent: ${agentName}`);
       
-      const endpoint = `https://${snowflakeHost}/api/v2/databases/${snowflakeDatabase}/schemas/${snowflakeSchema}/agents/${agentName}:run`;
+      // Determine endpoint and body based on inline spec
+      let endpoint;
+      let body;
+      
+      if (config.AGENT_SPEC_FILE) {
+        // Use cortex/agent:run endpoint with inline spec
+        console.log('🔍 Using inline spec for agent');
+        endpoint = `https://${snowflakeHost}/api/v2/cortex/agent:run`;
+        body = chatUtils.mergeInlineSpec(config.agentSpec, {
+          messages: requestBody.messages,
+          thread_id: requestBody.thread_id,
+          parent_message_id: requestBody.parent_message_id,
+          stream: requestBody.stream !== false
+        });
+      } else {
+        // Standard v2 endpoint
+        console.log('🔍 Using agent endpoint');
+        endpoint = `https://${snowflakeHost}/api/v2/databases/${snowflakeDatabase}/schemas/${snowflakeSchema}/agents/${agentName}:run`;
+        body = requestBody;
+      }
       
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: getSnowflakeAuthHeaders(req),
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(body)
       });
       
       if (!response.ok) {

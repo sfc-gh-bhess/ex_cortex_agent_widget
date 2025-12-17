@@ -23,7 +23,11 @@ const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 require('dotenv').config();
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { loadConfig } = require('./config');
 const { createChatRouter } = require('./chatServer');
+const { createV1ChatRouter } = require('./chatServerV1');
 
 const app = express();
 
@@ -91,6 +95,26 @@ const validateEnvironment = () => {
 
 validateEnvironment();
 
+// Load unified configuration (includes API version, fixed agent, inline spec, etc.)
+let appConfig;
+try {
+  appConfig = loadConfig();
+} catch (error) {
+  console.error('❌ Configuration error:', error.message);
+  process.exit(1);
+}
+
+// Additional validation for hybrid mode
+if (AUTH_MODE === 'OAUTH' && appConfig.SESSION_VAR_NAME && !process.env.SNOWFLAKE_PAT) {
+  console.error('❌ Hybrid mode error: SNOWFLAKE_PAT is required when SESSION_VAR_NAME is set with AUTH_MODE=OAUTH');
+  process.exit(1);
+}
+
+// Log mode detection
+if (AUTH_MODE === 'OAUTH' && appConfig.SESSION_VAR_NAME && process.env.SNOWFLAKE_PAT) {
+  console.log('🔀 Hybrid PAT-OAUTH mode detected: OAuth for user auth, PAT for Snowflake, claims for session variables');
+}
+
 // Snowflake configuration from environment
 const SNOWFLAKE_CONFIG = {
   host: process.env.SNOWFLAKE_HOST,
@@ -107,13 +131,79 @@ const OAUTH_CONFIG = {
 };
 
 // ============================================================================
+// JWT Validation Setup (for OAuth claims extraction)
+// ============================================================================
+
+let jwksClientInstance = null;
+
+// Setup JWKS client if OAuth mode and JWKS URL configured
+if (AUTH_MODE === 'OAUTH' && appConfig.IDP_JWKS_URL) {
+  jwksClientInstance = jwksClient({
+    jwksUri: appConfig.IDP_JWKS_URL,
+    cache: true,
+    cacheMaxAge: 600000, // 10 minutes
+    rateLimit: true,
+    jwksRequestsPerMinute: 10
+  });
+  console.log('✅ JWKS client configured for JWT validation');
+}
+
+/**
+ * Extract and validate claims from access token
+ * @param {string} accessToken - Access token to validate
+ * @returns {Promise<Object|null>} Claims object or null
+ */
+async function extractClaimsFromToken(accessToken) {
+  if (!accessToken || !jwksClientInstance) return null;
+  
+  try {
+    // Decode token to get header
+    const decoded = jwt.decode(accessToken, { complete: true });
+    if (!decoded || !decoded.header || !decoded.header.kid) {
+      console.warn('⚠️  Token missing kid in header');
+      return null;
+    }
+    
+    // Get signing key from JWKS
+    const key = await jwksClientInstance.getSigningKey(decoded.header.kid);
+    const signingKey = key.getPublicKey();
+    
+    // Verify and decode with validation
+    const verifyOptions = {
+      algorithms: ['RS256']
+    };
+    
+    // Add issuer validation if configured
+    if (appConfig.IDP_ISSUER) {
+      verifyOptions.issuer = appConfig.IDP_ISSUER;
+    }
+    
+    // Add audience validation if configured
+    if (appConfig.IDP_AUDIENCE) {
+      verifyOptions.audience = appConfig.IDP_AUDIENCE;
+    }
+    
+    const claims = jwt.verify(accessToken, signingKey, verifyOptions);
+    console.log('✅ JWT validated and claims extracted');
+    return claims;
+  } catch (error) {
+    console.error('❌ JWT validation failed:', error.message);
+    // If claims extraction is configured (JWKS URL set), require valid JWT
+    if (appConfig.IDP_JWKS_URL) {
+      throw new Error(`Invalid or expired JWT token: ${error.message}`);
+    }
+    return null;
+  }
+}
+
+// ============================================================================
 // Token Store and Session Management
 // ============================================================================
 
 /**
  * In-memory token store
  * Maps session ID to user token data
- * Structure: { sessionId: { accessToken, refreshToken, expiresAt, userId } }
+ * Structure: { sessionId: { accessToken, refreshToken, expiresAt, userId, claims } }
  */
 const tokenStore = new Map();
 
@@ -127,7 +217,7 @@ const generateSessionId = () => {
 /**
  * Store tokens for a session
  */
-const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = 'unknown') => {
+const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = 'unknown', claims = null) => {
   // Calculate expiry time (current time + expires_in seconds)
   const expiresAt = Date.now() + (expiresIn * 1000);
   
@@ -135,10 +225,12 @@ const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = '
     accessToken,
     refreshToken,
     expiresAt,
-    userId
+    userId,
+    claims  // Store OAuth claims server-side
   });
   
-  console.log(`🔐 Stored tokens for session: ${sessionId.substring(0, 8)}... (expires in ${expiresIn}s)`);
+  const claimsInfo = claims ? ` (with ${Object.keys(claims).length} claims)` : '';
+  console.log(`🔐 Stored tokens for session: ${sessionId.substring(0, 8)}...${claimsInfo} (expires in ${expiresIn}s)`);
 };
 
 /**
@@ -333,13 +425,25 @@ const refreshTokenIfNeeded = async (req, res, next) => {
       
       const data = await response.json();
       
-      // Update stored tokens with new access token
+      // Extract claims from new access token
+      let newClaims = null;
+      if (jwksClientInstance) {
+        try {
+          newClaims = await extractClaimsFromToken(data.access_token);
+        } catch (error) {
+          console.warn('⚠️  Failed to extract claims from refreshed token:', error.message);
+          // Continue with refresh but without claims
+        }
+      }
+      
+      // Update stored tokens with new access token and claims
       storeTokens(
         sessionId,
         data.access_token,
         data.refresh_token || tokens.refreshToken, // Some providers don't return a new refresh token
         data.expires_in,
-        tokens.userId
+        tokens.userId,
+        newClaims  // Store refreshed claims
       );
       
       // Update req.tokens so the current request uses the new token
@@ -361,25 +465,60 @@ const refreshTokenIfNeeded = async (req, res, next) => {
 // ============================================================================
 
 /**
- * Create and mount the chat router
- * This provides all endpoints needed for the ChatInterface component
+ * Helper to get authentication token for a request
  */
-const chatRouter = createChatRouter({
-  snowflakeHost: SNOWFLAKE_CONFIG.host,
-  snowflakeDatabase: SNOWFLAKE_CONFIG.database,
-  snowflakeSchema: SNOWFLAKE_CONFIG.schema,
-  getAuthToken: (req) => {
-    // PAT mode: Use PAT from environment
-    if (req.authMode === 'PAT') {
-      return process.env.SNOWFLAKE_PAT;
-    }
-    // OAUTH mode: Use session-based access token
-    return req.tokens?.accessToken;
-  },
-  onError: (error) => {
-    console.error('Chat server error:', error.message);
+function getAuthTokenForRequest(req) {
+  // PAT mode: Use PAT from environment
+  if (req.authMode === 'PAT') {
+    return process.env.SNOWFLAKE_PAT;
   }
-});
+  
+  // Hybrid mode: OAuth for user auth, but PAT for Snowflake API
+  // Detected by: AUTH_MODE=OAUTH + SESSION_VAR_NAME is set
+  if (appConfig.SESSION_VAR_NAME && process.env.SNOWFLAKE_PAT) {
+    return process.env.SNOWFLAKE_PAT;
+  }
+  
+  // Standard OAUTH mode: Use session-based access token
+  return req.tokens?.accessToken;
+}
+
+/**
+ * Helper to get OAuth claims for a request
+ */
+function getClaimsForRequest(req) {
+  if (req.authMode === 'PAT') return null;
+  return req.tokens?.claims || null;
+}
+
+/**
+ * Create and mount the appropriate chat router based on API version
+ */
+let chatRouter;
+
+if (appConfig.AGENT_API_VERSION === 'v1') {
+  console.log('🔧 Creating v1 chat router...');
+  chatRouter = createV1ChatRouter({
+    ...appConfig,
+    snowflakeHost: SNOWFLAKE_CONFIG.host,
+    getAuthToken: getAuthTokenForRequest,
+    getClaimsForRequest: getClaimsForRequest
+  });
+  console.log('✅ v1 chat router created');
+} else {
+  console.log('🔧 Creating v2 chat router...');
+  chatRouter = createChatRouter({
+    ...appConfig,
+    snowflakeHost: SNOWFLAKE_CONFIG.host,
+    snowflakeDatabase: SNOWFLAKE_CONFIG.database,
+    snowflakeSchema: SNOWFLAKE_CONFIG.schema,
+    getAuthToken: getAuthTokenForRequest,
+    onError: (error) => {
+      console.error('Chat server error:', error.message);
+    }
+  });
+  console.log('✅ v2 chat router created');
+}
 
 // Mount chat router with authentication middleware
 app.use('/api', authenticate, refreshTokenIfNeeded, chatRouter);
@@ -447,16 +586,28 @@ if (AUTH_MODE === 'OAUTH') {
     
     const tokenData = await response.json();
     
+    // Extract claims from access token (if JWT validation configured)
+    let claims = null;
+    if (jwksClientInstance) {
+      try {
+        claims = await extractClaimsFromToken(tokenData.access_token);
+      } catch (error) {
+        console.error('❌ Claims extraction failed:', error.message);
+        return res.status(401).json({ error: error.message });
+      }
+    }
+    
     // Generate session ID
     const sessionId = generateSessionId();
     
-    // Store tokens in memory
+    // Store tokens AND claims in memory
     storeTokens(
       sessionId,
       tokenData.access_token,
       tokenData.refresh_token,
       tokenData.expires_in,
-      tokenData.user_id || 'unknown'
+      tokenData.user_id || 'unknown',
+      claims  // Store claims server-side
     );
     
     // Set secure httpOnly cookie
@@ -531,6 +682,7 @@ app.post('/auth/logout', (req, res) => {
     
     res.json({ 
       authenticated: true,
+      mode: 'OAUTH',
       userId: tokens.userId,
       expiresAt: tokens.expiresAt
     });

@@ -77,3 +77,5 @@ package-lock.json
 .DS_Store
 
 summary_docs/
+multisales_agent.json
+multisales_agent_v1.json

@@ -1,0 +1,54 @@
+{
+    "models": {
+      "orchestration": "auto"
+    },
+    "orchestration": {},
+    "instructions": {
+      "sample_questions": [
+        {
+          "question": "List the available tenants and the number of store locations they have."
+        },
+        {
+          "question": "What were the best selling items in April 2024?"
+        },
+        {
+          "question": "What was the best selling item over all time?"
+        },
+        {
+          "question": "What was the best selling chicken sandwich in May 2024?"
+        }
+      ]
+    },
+    "tools": [
+      {
+        "tool_spec": {
+          "type": "cortex_analyst_text_to_sql",
+          "name": "analyst1",
+          "description": "Use this tool to query menu and sales data for various tenants."
+        }
+      },
+      {
+        "tool_spec": {
+          "type": "cortex_search",
+          "name": "search1",
+          "description": "Indexes the menu item names"
+        }
+      }
+    ],
+    "tool_resources": {
+      "analyst1": {
+        "execution_environment": {
+          "type": "warehouse",
+          "warehouse": "MULTISALES_WH"
+        },
+        "semantic_view": "MULTISALES.DATA.MULTISALES_SV"
+      },
+      "search1": {
+        "id_column": "ITEM_ID",
+        "max_results": 10,
+        "search_service": "MULTISALES.DATA.ITEMS_SEARCH",
+        "title_column": "ITEM"
+      }
+    }
+  }
+  

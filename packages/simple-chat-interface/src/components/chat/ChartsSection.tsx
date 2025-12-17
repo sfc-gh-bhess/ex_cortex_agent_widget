@@ -56,8 +56,8 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({
           : alpha(theme.palette.grey[50], 0.8),
         border: (theme) => theme.palette.mode === 'dark'
           ? `1px solid ${alpha(theme.palette.primary.main, 0.12)}`
-          : `1px solid ${alpha(theme.palette.grey[300], 0.8)}`,
-        display: { xs: 'none', md: 'block' } // Hide on mobile
+          : `1px solid ${alpha(theme.palette.grey[300], 0.8)}`
+        // Charts now always visible (removed mobile hide)
       }}
     >
       <Accordion 

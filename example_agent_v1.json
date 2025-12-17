@@ -1,0 +1,41 @@
+{
+    "model": "claude-4-sonnet",
+    "experimental": {
+      "EnableRelatedQueries": true
+    },
+    "tools": [
+      {
+        "tool_spec": {
+          "type": "cortex_search",
+          "name": "search1"
+        }
+      },
+      {
+        "tool_spec": {
+          "type": "cortex_analyst_text_to_sql",
+          "name": "analyst1"
+        }
+      },
+      {
+        "tool_spec": {
+          "type": "data_to_chart",
+          "name": "data_to_chart"
+        }
+      },
+      {
+        "tool_spec": {
+          "type": "sql_exec",
+          "name": "sql_exec"
+        }
+      }
+    ],
+    "tool_resources": {
+      "analyst1": {
+        "semantic_view": "MULTISALES.DATA.MULTISALES_SV"
+      },
+      "search1": {
+        "name": "MULTISALES.DATA.ITEMS_SEARCH",
+        "max_results": 10
+      }
+    }
+  }
