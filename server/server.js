@@ -561,18 +561,19 @@ if (AUTH_MODE === 'OAUTH') {
     
     // Exchange authorization code for access token
     // Use redirect URI from environment (must match what was used in the authorization request)
+    const h = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${Buffer.from(`${OAUTH_CONFIG.clientId}:${OAUTH_CONFIG.clientSecret}`).toString('base64')}`
+    }
+    const b = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: OAUTH_CONFIG.redirectUri,
+    })
     const response = await fetch(OAUTH_CONFIG.tokenUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: OAUTH_CONFIG.redirectUri,
-        client_id: OAUTH_CONFIG.clientId,
-        client_secret: OAUTH_CONFIG.clientSecret,
-      }),
+      headers: h,
+      body: b,
     });
     
     if (!response.ok) {
