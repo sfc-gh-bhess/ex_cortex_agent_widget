@@ -6,7 +6,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { FloatingChatInterface, ChatThemeProvider, InlineChatInterface } from '@chat-overlay/simple-chat-interface';
+import { FloatingChatInterface, ChatThemeProvider } from '@cortex-chat/interface';
 import { Box, Typography, CircularProgress, Container } from '@mui/material';
 import { ChatHeader } from './components/chat/ChatHeader';
 import { ThemeContextProvider, useThemeContext } from './contexts/ThemeContext';

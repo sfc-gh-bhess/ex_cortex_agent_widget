@@ -1,6 +1,6 @@
-# Cortex Chat Server
+# @cortex-chat/server
 
-Express router module providing all backend endpoints required by the [`@chat-overlay/simple-chat-interface`](../packages/simple-chat-interface/README.md) React component. Drop it into any Express app to add Snowflake Cortex Agents chat capabilities.
+Drop-in Express router providing all backend endpoints required by the [`@cortex-chat/interface`](../cortex-chat-interface/README.md) React component. Add Snowflake Cortex Agents chat capabilities to any Express app.
 
 ## Architecture
 
@@ -38,11 +38,15 @@ Express router module providing all backend endpoints required by the [`@chat-ov
 
 The module is **authentication-agnostic**. It delegates token retrieval to a `getAuthToken` callback you provide, so it works with any auth system. Protect routes using your own middleware (`app.use('/api', yourAuthMiddleware, chatRouter)`).
 
-The companion `server.js` in this directory is a **sample application** that demonstrates full integration with session management, CORS, rate limiting, and three authentication modes (PAT, OAuth, Hybrid).
+The `sample-app/server/server.js` in the repository root demonstrates full integration with session management, CORS, rate limiting, and three authentication modes (PAT, OAuth, Hybrid).
 
 ## Quick Start
 
-### 1. Copy `chatServer.js` to your project
+### 1. Install
+
+```bash
+npm install ./path/to/cortex-chat-server
+```
 
 ### 2. Set environment variables
 
@@ -56,7 +60,7 @@ SNOWFLAKE_SCHEMA=your_schema
 
 ```javascript
 const express = require('express');
-const { createChatRouter } = require('./chatServer');
+const { createChatRouter } = require('@cortex-chat/server');
 
 const app = express();
 app.use(express.json());
@@ -72,7 +76,7 @@ app.use('/api', chatRouter);
 app.listen(3001);
 ```
 
-The frontend `ChatInterface` component can now connect to `http://localhost:3001`.
+The frontend `@cortex-chat/interface` component can now connect to `http://localhost:3001`.
 
 ## Configuration
 
@@ -159,7 +163,7 @@ The `getSessionVariables` callback is invoked on every agent message request (`P
 }
 ```
 
-The variable name (e.g., `TENANT`) and the IdP claim key are configurable. See `env.backend.example` for the `SESSION_VAR_NAME` and `CLAIM_KEY` environment variables.
+The variable name (e.g., `TENANT`) and the IdP claim key are configurable. See `sample-app/env.backend.example` for the `SESSION_VAR_NAME` and `CLAIM_KEY` environment variables.
 
 ### Custom Authentication
 
@@ -300,12 +304,13 @@ app.use('/api/dev', devChat);
 | "No authentication token provided" | `getAuthToken` returned null/undefined | Ensure the function returns a valid token |
 | 401 Unauthorized from Snowflake | Token invalid, expired, or insufficient permissions | Verify token validity; implement refresh logic for OAuth |
 | 404 Agent not found | Agent doesn't exist in the specified database/schema | Check `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`, agent name (case-sensitive) |
-| CORS errors | Backend not accepting frontend origin | Configure CORS before mounting the router (see sample `server.js`) |
+| CORS errors | Backend not accepting frontend origin | Configure CORS before mounting the router (see `sample-app/server/server.js`) |
 
 ## Related
 
 - [Top-level README](../README.md) — Architecture overview and quick start
-- [Frontend Package](../packages/simple-chat-interface/README.md) — React component API and embedding guide
+- [Frontend Package](../cortex-chat-interface/README.md) — React component API and embedding guide
+- [Sample Application](../sample-app/README.md) — Full working example
 - [Snowflake Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) — Agent configuration
 - [Cortex Agents REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api) — API reference
 

@@ -1,13 +1,13 @@
-# @chat-overlay/simple-chat-interface
+# @cortex-chat/interface
 
 Drop-in React chat interface for [Snowflake Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api). Built with React, TypeScript, and Material-UI.
 
-This is a **frontend-only** package. It requires a backend that implements the endpoints described in [Backend Requirements](#backend-requirements). The companion [`server/chatServer.js`](../../server/README.md) module provides a ready-to-use Express router.
+This is a **frontend-only** package. It requires a backend that implements the endpoints described in [Backend Requirements](#backend-requirements). The companion [`cortex-chat-server`](../cortex-chat-server/README.md) module provides a ready-to-use Express router.
 
 ## Architecture
 
 ```
-@chat-overlay/simple-chat-interface
+@cortex-chat/interface
 ├── components/
 │   ├── FloatingChatInterface   ← Floating button + resizable overlay (most common)
 │   ├── InlineChatInterface     ← Embedded inline panel
@@ -31,7 +31,7 @@ This is a **frontend-only** package. It requires a backend that implements the e
 
 ## Sample Application
 
-The `src/` directory at the repository root contains a complete sample application that demonstrates:
+The `sample-app/` directory at the repository root contains a complete sample application that demonstrates:
 
 - Wrapping `FloatingChatInterface` with authentication (`AuthContext`) and theming (`ThemeContext`)
 - OAuth/OIDC login flow with callback handling
@@ -44,7 +44,7 @@ This is a good starting point if you're building a new application. If you're ad
 ### Installation
 
 ```bash
-npm install ./packages/simple-chat-interface
+npm install ./path/to/cortex-chat-interface
 ```
 
 The package has peer dependencies on `@mui/material`, `@emotion/react`, `@emotion/styled`, `react`, and `react-dom`. If your app already uses MUI, these are satisfied automatically.
@@ -54,7 +54,7 @@ The package has peer dependencies on `@mui/material`, `@emotion/react`, `@emotio
 A floating action button in the corner of your app. Clicking it opens a resizable overlay.
 
 ```tsx
-import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+import { FloatingChatInterface, ChatThemeProvider } from '@cortex-chat/interface';
 
 function App() {
   return (
@@ -73,7 +73,7 @@ The overlay is draggable, resizable, and minimizable. Thread history is accessib
 Renders the chat interface inline within your page layout. Useful for dedicated chat pages or split-panel UIs.
 
 ```tsx
-import { InlineChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+import { InlineChatInterface, ChatThemeProvider } from '@cortex-chat/interface';
 
 function App() {
   return (
@@ -95,7 +95,7 @@ If your app already has a `ThemeProvider`, you can skip `ChatThemeProvider`:
 
 ```tsx
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { FloatingChatInterface } from '@chat-overlay/simple-chat-interface';
+import { FloatingChatInterface } from '@cortex-chat/interface';
 
 const myTheme = createTheme({ /* your config */ });
 
@@ -113,7 +113,7 @@ function App() {
 For full control over configuration (custom hooks, nested contexts, etc.):
 
 ```tsx
-import { ChatInterface, ConfigProvider, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+import { ChatInterface, ConfigProvider, ChatThemeProvider } from '@cortex-chat/interface';
 
 function App() {
   return (
@@ -179,9 +179,9 @@ interface DisplayConfig {
 
 ## Configuring for Authentication Modes
 
-The chat interface component itself is **authentication-agnostic** — it just calls `backendUrl` endpoints. Authentication is handled by the backend (see [server/README.md](../../server/README.md)).
+The chat interface component itself is **authentication-agnostic** — it just calls `backendUrl` endpoints. Authentication is handled by the backend (see [cortex-chat-server/README.md](../cortex-chat-server/README.md)).
 
-However, the **sample application** (`src/`) includes full authentication support, configured via frontend environment variables:
+The **sample application** (`sample-app/`) includes full authentication support, configured via frontend environment variables:
 
 | Mode | `REACT_APP_AUTH_MODE` | Additional Frontend Env Vars | Behavior |
 |------|-----------------------|------------------------------|----------|
@@ -189,11 +189,11 @@ However, the **sample application** (`src/`) includes full authentication suppor
 | **OAuth** | `OAUTH` | `REACT_APP_OAUTH_LOGIN_URL`, `REACT_APP_OAUTH_CLIENT_ID`, `REACT_APP_OAUTH_REDIRECT_URI`, optionally `REACT_APP_OAUTH_SCOPE`, `REACT_APP_OAUTH_AUDIENCE`, `REACT_APP_OAUTH_PROMPT` | Users see a login page and authenticate via IdP. |
 | **Hybrid** | `OAUTH` | Same as OAuth | Same login flow as OAuth. The backend distinction is transparent to the frontend. |
 
-See `env.frontend.example` in the repository root for all available options with documentation.
+See `sample-app/env.frontend.example` for all available options.
 
 ## Backend Requirements
 
-The chat interface expects the following API endpoints. The companion [`server/chatServer.js`](../../server/README.md) module implements all of them.
+The chat interface expects the following API endpoints. The companion [`cortex-chat-server`](../cortex-chat-server/README.md) module implements all of them.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -242,16 +242,16 @@ For advanced usage, the package exports its internal hooks and types:
 
 ```typescript
 // Hooks
-import { useAgentConfig, useChatMessages, useAccordionState, useSpeechRecognition } from '@chat-overlay/simple-chat-interface';
+import { useAgentConfig, useChatMessages, useAccordionState, useSpeechRecognition } from '@cortex-chat/interface';
 
 // Contexts
-import { ConfigProvider, useConfig } from '@chat-overlay/simple-chat-interface';
+import { ConfigProvider, useConfig } from '@cortex-chat/interface';
 
 // Types
-import type { ChatMessage, AgentConfig, ChatConfig, DisplayConfig, ChartContent } from '@chat-overlay/simple-chat-interface';
+import type { ChatMessage, AgentConfig, ChatConfig, DisplayConfig, ChartContent } from '@cortex-chat/interface';
 
 // Theme
-import { createAppTheme } from '@chat-overlay/simple-chat-interface';
+import { createAppTheme } from '@cortex-chat/interface';
 ```
 
 ## License

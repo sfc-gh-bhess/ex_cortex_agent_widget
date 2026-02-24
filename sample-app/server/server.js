@@ -24,7 +24,7 @@ const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 require('dotenv').config();
 const { createRemoteJWKSet, jwtVerify } = require('jose');
-const { createChatRouter } = require('./chatServer');
+const { createChatRouter } = require('@cortex-chat/server');
 
 const app = express();
 

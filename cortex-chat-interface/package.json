@@ -1,5 +1,5 @@
 {
-  "name": "@chat-overlay/simple-chat-interface",
+  "name": "@cortex-chat/interface",
   "version": "1.0.0",
   "description": "Embeddable chat interface component powered by Snowflake Cortex Agents REST API",
   "main": "dist/index.js",
