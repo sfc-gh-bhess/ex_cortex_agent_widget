@@ -121,6 +121,7 @@ const HYBRID_CONFIG = AUTH_MODE === 'HYBRID' ? {
   audience: process.env.IDP_AUDIENCE,
   sessionVarName: process.env.SESSION_VAR_NAME,
   claimKey: process.env.CLAIM_KEY,
+  usernameClaim: process.env.USERNAME_CLAIM_KEY || 'email',
 } : null;
 
 // JWKS key set for HYBRID mode JWT validation (caches keys automatically)
@@ -149,9 +150,9 @@ const generateSessionId = () => {
 /**
  * Store tokens for a session
  * @param {string} tenant - Tenant identifier extracted from IdP claims (HYBRID mode only)
+ * @param {string} username - User identity extracted from IdP claims (HYBRID mode only)
  */
-const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = 'unknown', tenant = null) => {
-  // Calculate expiry time (current time + expires_in seconds)
+const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = 'unknown', tenant = null, username = null) => {
   const expiresAt = Date.now() + (expiresIn * 1000);
   
   tokenStore.set(sessionId, {
@@ -159,11 +160,12 @@ const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = '
     refreshToken,
     expiresAt,
     userId,
-    tenant
+    tenant,
+    username
   });
   
-  const tenantInfo = tenant ? `, tenant: ${tenant}` : '';
-  console.log(`🔐 Stored tokens for session: ${sessionId.substring(0, 8)}... (expires in ${expiresIn}s${tenantInfo})`);
+  const extras = [tenant && `tenant: ${tenant}`, username && `username: ${username}`].filter(Boolean).join(', ');
+  console.log(`🔐 Stored tokens for session: ${sessionId.substring(0, 8)}... (expires in ${expiresIn}s${extras ? `, ${extras}` : ''})`);
 };
 
 /**
@@ -354,8 +356,9 @@ const refreshTokenIfNeeded = async (req, res, next) => {
       
       const data = await response.json();
       
-      // In HYBRID mode, re-validate JWT and extract tenant from refreshed tokens
-      let tenant = tokens.tenant; // preserve existing tenant by default
+      // In HYBRID mode, re-validate JWT and extract tenant/username from refreshed tokens
+      let tenant = tokens.tenant;
+      let username = tokens.username;
       if (AUTH_MODE === 'HYBRID') {
         const tokensToTry = [data.id_token, data.access_token].filter(Boolean);
         const issuerVariants = [
@@ -375,8 +378,9 @@ const refreshTokenIfNeeded = async (req, res, next) => {
                 const extracted = payload[HYBRID_CONFIG.claimKey];
                 if (extracted) {
                   tenant = extracted;
+                  username = payload[HYBRID_CONFIG.usernameClaim] || username;
                   found = true;
-                  console.log(`✅ Re-validated tenant on refresh: ${tenant}`);
+                  console.log(`✅ Re-validated on refresh: tenant=${tenant}, username=${username}`);
                   break;
                 }
               } catch (err) {
@@ -395,7 +399,8 @@ const refreshTokenIfNeeded = async (req, res, next) => {
         data.refresh_token || tokens.refreshToken,
         data.expires_in,
         tokens.userId,
-        tenant
+        tenant,
+        username
       );
       
       req.tokens = getTokens(sessionId);
@@ -421,6 +426,7 @@ const chatRouter = createChatRouter({
   snowflakeHost: SNOWFLAKE_CONFIG.host,
   snowflakeDatabase: SNOWFLAKE_CONFIG.database,
   snowflakeSchema: SNOWFLAKE_CONFIG.schema,
+  originApplication: process.env.ORIGIN_APPLICATION || 'ask_crtx',
   getAuthToken: (req) => {
     if (req.authMode === 'PAT' || req.authMode === 'HYBRID') {
       return process.env.SNOWFLAKE_PAT;
@@ -441,6 +447,15 @@ const chatRouter = createChatRouter({
       };
     }
     return null;
+  } : undefined,
+  getOriginApplication: AUTH_MODE === 'HYBRID' ? (req, baseValue) => {
+    const sessionId = req.cookies?.session_id;
+    const tokens = sessionId ? getTokens(sessionId) : null;
+    if (tokens?.username) {
+      const hash = crypto.createHash('sha256').update(tokens.username).digest('hex').substring(0, 7);
+      return `${baseValue}_${hash}`;
+    }
+    return baseValue;
   } : undefined,
   onError: (error) => {
     console.error('Chat server error:', error.message);
@@ -511,21 +526,18 @@ if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
       
       const tokenData = await response.json();
       
-      // In HYBRID mode, validate JWT and extract the tenant claim
+      // In HYBRID mode, validate JWT and extract the tenant and username claims
       let tenant = null;
+      let username = null;
       if (AUTH_MODE === 'HYBRID') {
         const tokensToTry = [tokenData.id_token, tokenData.access_token].filter(Boolean);
         let validated = false;
 
-        // Normalize issuer: allow match with or without trailing slash
         const issuerVariants = [
           HYBRID_CONFIG.issuer,
           HYBRID_CONFIG.issuer.endsWith('/') ? HYBRID_CONFIG.issuer.slice(0, -1) : HYBRID_CONFIG.issuer + '/',
         ];
 
-        // Per OIDC spec, the id_token audience is the client ID, while the
-        // access_token audience is the API identifier. Try both so we can
-        // validate whichever token contains the claim we need.
         const audienceVariants = [HYBRID_CONFIG.audience];
         if (OAUTH_CONFIG.clientId && OAUTH_CONFIG.clientId !== HYBRID_CONFIG.audience) {
           audienceVariants.push(OAUTH_CONFIG.clientId);
@@ -539,8 +551,9 @@ if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
                 const extracted = payload[HYBRID_CONFIG.claimKey];
                 if (extracted) {
                   tenant = extracted;
+                  username = payload[HYBRID_CONFIG.usernameClaim] || null;
                   validated = true;
-                  console.log(`✅ JWT validated, ${HYBRID_CONFIG.claimKey}=${tenant}`);
+                  console.log(`✅ JWT validated, ${HYBRID_CONFIG.claimKey}=${tenant}, ${HYBRID_CONFIG.usernameClaim}=${username}`);
                   break;
                 }
               } catch (err) {
@@ -569,7 +582,8 @@ if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
         tokenData.refresh_token,
         tokenData.expires_in,
         tokenData.user_id || 'unknown',
-        tenant
+        tenant,
+        username
       );
       
       const cookieOptions = {

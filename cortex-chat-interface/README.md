@@ -121,7 +121,6 @@ function App() {
       <ConfigProvider
         config={{
           backendUrl: 'http://localhost:3001',
-          applicationName: 'my_app',
           onError: (error) => console.error(error),
           displayConfig: {
             showThinking: true,
@@ -153,7 +152,6 @@ function App() {
 | `initialAgent` | `string` | No | — | Pre-select a specific agent |
 | `onError` | `(error: string) => void` | No | — | Error callback |
 | `displayConfig` | `DisplayConfig` | No | — | Toggle optional UI sections |
-| `applicationName` | `string` | No | `'simple_chat_interface'` | Application name for thread tracking |
 
 ### InlineChatInterface
 
@@ -165,7 +163,6 @@ function App() {
 | `className` | `string` | No | — | CSS class for the container |
 | `style` | `React.CSSProperties` | No | — | Inline styles for the container |
 | `displayConfig` | `DisplayConfig` | No | — | Toggle optional UI sections |
-| `applicationName` | `string` | No | `'simple_chat_interface'` | Application name for thread tracking |
 
 ### DisplayConfig
 

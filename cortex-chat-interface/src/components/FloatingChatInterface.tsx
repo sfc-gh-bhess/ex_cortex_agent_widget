@@ -32,7 +32,6 @@ export interface DisplayConfig {
 
 export interface FloatingChatInterfaceProps {
   backendUrl: string;
-  applicationName?: string;
   initialAgent?: string;
   onError?: (error: string) => void;
   displayConfig?: DisplayConfig;
@@ -283,7 +282,6 @@ const OverlayWrapper: React.FC<OverlayWrapperProps> = ({
 
 export const FloatingChatInterface: React.FC<FloatingChatInterfaceProps> = ({
   backendUrl,
-  applicationName,
   initialAgent,
   onError,
   displayConfig,
@@ -293,7 +291,7 @@ export const FloatingChatInterface: React.FC<FloatingChatInterfaceProps> = ({
   initialState
 }) => {
   return (
-    <ConfigProvider config={{ backendUrl, applicationName, onError, displayConfig }}>
+    <ConfigProvider config={{ backendUrl, onError, displayConfig }}>
       <OverlayWrapper
         defaultWidth={defaultWidth}
         defaultHeight={defaultHeight}

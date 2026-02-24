@@ -214,7 +214,6 @@ const MainAppContent: React.FC = () => {
         {/* Floating chat overlay */}
         <FloatingChatInterface 
           backendUrl={config.backendUrl}
-          applicationName={config.applicationName}
           onError={(error) => console.error('Chat error:', error)}
           defaultWidth="70%"
           defaultHeight="70vh"

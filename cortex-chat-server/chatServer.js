@@ -70,6 +70,8 @@ const MAX_AGENT_NAME_LENGTH = 100;
  * @param {string} config.snowflakeSchema - Schema name
  * @param {Function} config.getAuthToken - Function to get auth token from request
  * @param {Function} [config.getSessionVariables] - Optional function returning session variables to inject into agent requests
+ * @param {string} [config.originApplication] - Base origin_application value for thread tagging/filtering
+ * @param {Function} [config.getOriginApplication] - Optional callback (req, baseValue) => string to transform origin_application per-request
  * @param {Function} [config.onError] - Optional error handler callback
  * @returns {express.Router} Configured Express router
  */
@@ -85,7 +87,7 @@ function createChatRouter(config) {
     throw new Error('chatServer: getAuthToken must be a function');
   }
   
-  const { snowflakeHost, snowflakeDatabase, snowflakeSchema, getAuthToken, getSessionVariables, onError } = config;
+  const { snowflakeHost, snowflakeDatabase, snowflakeSchema, getAuthToken, getSessionVariables, originApplication, getOriginApplication, onError } = config;
   
   // =========================================================================
   // Helper Functions
@@ -115,6 +117,19 @@ function createChatRouter(config) {
     return validPattern.test(agentName) && agentName.length <= MAX_AGENT_NAME_LENGTH;
   };
   
+  /**
+   * Resolve the origin_application value for a request.
+   * Uses the config base value (or the frontend-provided fallback),
+   * then applies the getOriginApplication callback if provided.
+   */
+  const resolveOriginApplication = (req, frontendValue) => {
+    let appName = originApplication || frontendValue;
+    if (appName && typeof getOriginApplication === 'function') {
+      appName = getOriginApplication(req, appName);
+    }
+    return appName;
+  };
+
   /**
    * Handle errors consistently
    */
@@ -328,19 +343,12 @@ function createChatRouter(config) {
    */
   router.post('/threads', async (req, res) => {
     try {
-      const { origin_application } = req.body;
-      
-      // Validate origin_application if provided
-      if (origin_application && typeof origin_application !== 'string') {
-        return res.status(HTTP_STATUS.BAD_REQUEST).json({
-          error: 'origin_application must be a string'
-        });
-      }
+      const appName = resolveOriginApplication(req, req.body.origin_application);
       
       const endpoint = `https://${snowflakeHost}/api/v2/cortex/threads`;
-      const requestBody = origin_application ? { origin_application } : {};
+      const requestBody = appName ? { origin_application: appName } : {};
       
-      console.log(`Creating thread for application: ${origin_application || 'default'}`);
+      console.log(`Creating thread for application: ${appName || 'default'}`);
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -371,11 +379,15 @@ function createChatRouter(config) {
    */
   router.get('/threads', async (req, res) => {
     try {
-      const endpoint = `https://${snowflakeHost}/api/v2/cortex/threads`;
+      const appName = resolveOriginApplication(req, req.query.origin_application);
+      const url = new URL(`https://${snowflakeHost}/api/v2/cortex/threads`);
+      if (appName) {
+        url.searchParams.set('origin_application', appName);
+      }
       
-      console.log('Fetching thread list...');
+      console.log(`Fetching thread list${appName ? ` (origin_application=${appName})` : ''}...`);
       
-      const response = await fetch(endpoint, {
+      const response = await fetch(url.toString(), {
         method: 'GET',
         headers: getSnowflakeAuthHeaders(req)
       });

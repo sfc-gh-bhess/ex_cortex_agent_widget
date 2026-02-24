@@ -19,7 +19,6 @@ export interface DisplayConfig {
 
 export interface InlineChatInterfaceProps {
   backendUrl: string;
-  applicationName?: string;
   initialAgent?: string;
   onError?: (error: string) => void;
   className?: string;
@@ -29,7 +28,6 @@ export interface InlineChatInterfaceProps {
 
 export const InlineChatInterface: React.FC<InlineChatInterfaceProps> = ({
   backendUrl,
-  applicationName,
   initialAgent,
   onError,
   className,
@@ -37,7 +35,7 @@ export const InlineChatInterface: React.FC<InlineChatInterfaceProps> = ({
   displayConfig
 }) => {
   return (
-    <ConfigProvider config={{ backendUrl, applicationName, onError, displayConfig }}>
+    <ConfigProvider config={{ backendUrl, onError, displayConfig }}>
       <Box className={className} sx={style}>
         <ChatInterface />
       </Box>

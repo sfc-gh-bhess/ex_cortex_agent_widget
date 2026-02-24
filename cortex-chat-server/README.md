@@ -95,6 +95,8 @@ The frontend `@cortex-chat/interface` component can now connect to `http://local
 
 | Option | Type | Description |
 |--------|------|-------------|
+| `originApplication` | `string` | Base `origin_application` value for thread tagging and filtering. Overrides any value sent by the frontend. |
+| `getOriginApplication` | `(req, baseValue) => string` | Transforms `origin_application` per-request (e.g., append username for per-user thread scoping) |
 | `getSessionVariables` | `(req) => object \| null` | Returns session variables to inject into agent requests (see [Hybrid mode](#hybrid-pat--idp-tenant-extraction)) |
 | `onError` | `(error) => void` | Custom error handler callback |
 
@@ -224,11 +226,13 @@ Sends a message to an agent. Returns a **Server-Sent Events** (SSE) stream.
 
 Creates a new conversation thread.
 
-**Request:** `{ "origin_application": "my_app" }`
+**Request:** `{}` (the backend sets `origin_application` from config)
+
+If `originApplication` is configured, it is injected automatically. If `getOriginApplication` is also configured, the value is transformed per-request (e.g., to append a username for per-user scoping).
 
 ### `GET /threads`
 
-Lists all threads. Supports `?applicationName=my_app` query parameter.
+Lists all threads. If `originApplication` is configured, threads are filtered by it automatically via the Snowflake API's `origin_application` query parameter.
 
 ### `GET /threads/:id`
 

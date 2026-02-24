@@ -13,7 +13,7 @@ import { ERROR_TEXT, API_DEFAULTS, getApiStatusMessage } from '../constants/text
 const MAX_MESSAGES = 100;
 
 export const useChatMessages = (selectedAgent: string) => {
-  const { backendUrl, applicationName, onError } = useConfig();
+  const { backendUrl, onError } = useConfig();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -30,9 +30,7 @@ export const useChatMessages = (selectedAgent: string) => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          origin_application: applicationName || 'simple_chat_interface'
-        }),
+        body: '{}',
         credentials: 'include'
       });
       
@@ -49,7 +47,7 @@ export const useChatMessages = (selectedAgent: string) => {
       console.error('Error creating thread:', error);
       return null;
     }
-  }, [backendUrl, applicationName]);
+  }, [backendUrl]);
 
   // Helper to transform API message to ChatMessage format
   const transformApiMessage = useCallback((apiMessage: any, index: number): ChatMessage | null => {

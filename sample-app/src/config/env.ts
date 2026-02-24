@@ -21,7 +21,6 @@ export interface OAuthConfig {
 
 export interface AppConfig {
   backendUrl: string;
-  applicationName: string;
   authMode: 'PAT' | 'OAUTH';
   oauth?: OAuthConfig;
 }
@@ -78,11 +77,8 @@ const validateEnvironment = (): AppConfig => {
     };
   }
 
-  const applicationName = import.meta.env.VITE_APPLICATION_NAME || 'ask_cortex';
-
   return {
     backendUrl,
-    applicationName,
     authMode,
     oauth,
   };
