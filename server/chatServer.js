@@ -69,6 +69,7 @@ const MAX_AGENT_NAME_LENGTH = 100;
  * @param {string} config.snowflakeDatabase - Database name
  * @param {string} config.snowflakeSchema - Schema name
  * @param {Function} config.getAuthToken - Function to get auth token from request
+ * @param {Function} [config.getSessionVariables] - Optional function returning session variables to inject into agent requests
  * @param {Function} [config.onError] - Optional error handler callback
  * @returns {express.Router} Configured Express router
  */
@@ -84,7 +85,7 @@ function createChatRouter(config) {
     throw new Error('chatServer: getAuthToken must be a function');
   }
   
-  const { snowflakeHost, snowflakeDatabase, snowflakeSchema, getAuthToken, onError } = config;
+  const { snowflakeHost, snowflakeDatabase, snowflakeSchema, getAuthToken, getSessionVariables, onError } = config;
   
   // =========================================================================
   // Helper Functions
@@ -219,7 +220,7 @@ function createChatRouter(config) {
   router.post('/agents/:agentName/messages', async (req, res) => {
     try {
       const { agentName } = req.params;
-      const requestBody = req.body;
+      let requestBody = req.body;
       
       if (!validateAgentName(agentName)) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -233,6 +234,16 @@ function createChatRouter(config) {
         });
       }
       
+      if (typeof getSessionVariables === 'function') {
+        const variables = getSessionVariables(req);
+        if (variables && Object.keys(variables).length > 0) {
+          requestBody = {
+            ...requestBody,
+            variables: { ...(requestBody.variables || {}), ...variables }
+          };
+        }
+      }
+
       console.log(`💬 Sending message to agent: ${agentName}`);
       
       const endpoint = `https://${snowflakeHost}/api/v2/databases/${snowflakeDatabase}/schemas/${snowflakeSchema}/agents/${agentName}:run`;

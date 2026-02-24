@@ -23,6 +23,7 @@ const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 require('dotenv').config();
+const { createRemoteJWKSet, jwtVerify } = require('jose');
 const { createChatRouter } = require('./chatServer');
 
 const app = express();
@@ -50,7 +51,7 @@ const CONFIG = {
 // Render uses PORT, local dev uses SERVER_PORT
 const PORT = process.env.PORT || process.env.SERVER_PORT || CONFIG.DEFAULT_PORT;
 
-// Authentication mode: 'PAT' or 'OAUTH'
+// Authentication mode: 'PAT', 'OAUTH', or 'HYBRID'
 const AUTH_MODE = process.env.AUTH_MODE || 'OAUTH';
 console.log(`🔐 Authentication mode: ${AUTH_MODE}`);
 
@@ -74,8 +75,15 @@ const validateEnvironment = () => {
     required.push('SNOWFLAKE_PAT');
   } else if (AUTH_MODE === 'OAUTH') {
     required.push('OAUTH_TOKEN_URL', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_REDIRECT_URI');
+  } else if (AUTH_MODE === 'HYBRID') {
+    required.push(
+      'SNOWFLAKE_PAT',
+      'OAUTH_TOKEN_URL', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_REDIRECT_URI',
+      'IDP_JWKS_URL', 'IDP_ISSUER', 'IDP_AUDIENCE',
+      'SESSION_VAR_NAME', 'CLAIM_KEY'
+    );
   } else {
-    console.error('❌ Invalid AUTH_MODE. Must be "PAT" or "OAUTH"');
+    console.error('❌ Invalid AUTH_MODE. Must be "PAT", "OAUTH", or "HYBRID"');
     process.exit(1);
   }
 
@@ -106,6 +114,20 @@ const OAUTH_CONFIG = {
   redirectUri: process.env.OAUTH_REDIRECT_URI
 };
 
+// HYBRID mode configuration (IdP JWT validation + session variables)
+const HYBRID_CONFIG = AUTH_MODE === 'HYBRID' ? {
+  jwksUrl: process.env.IDP_JWKS_URL,
+  issuer: process.env.IDP_ISSUER,
+  audience: process.env.IDP_AUDIENCE,
+  sessionVarName: process.env.SESSION_VAR_NAME,
+  claimKey: process.env.CLAIM_KEY,
+} : null;
+
+// JWKS key set for HYBRID mode JWT validation (caches keys automatically)
+const jwks = AUTH_MODE === 'HYBRID'
+  ? createRemoteJWKSet(new URL(HYBRID_CONFIG.jwksUrl))
+  : null;
+
 // ============================================================================
 // Token Store and Session Management
 // ============================================================================
@@ -126,8 +148,9 @@ const generateSessionId = () => {
 
 /**
  * Store tokens for a session
+ * @param {string} tenant - Tenant identifier extracted from IdP claims (HYBRID mode only)
  */
-const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = 'unknown') => {
+const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = 'unknown', tenant = null) => {
   // Calculate expiry time (current time + expires_in seconds)
   const expiresAt = Date.now() + (expiresIn * 1000);
   
@@ -135,10 +158,12 @@ const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = '
     accessToken,
     refreshToken,
     expiresAt,
-    userId
+    userId,
+    tenant
   });
   
-  console.log(`🔐 Stored tokens for session: ${sessionId.substring(0, 8)}... (expires in ${expiresIn}s)`);
+  const tenantInfo = tenant ? `, tenant: ${tenant}` : '';
+  console.log(`🔐 Stored tokens for session: ${sessionId.substring(0, 8)}... (expires in ${expiresIn}s${tenantInfo})`);
 };
 
 /**
@@ -252,12 +277,11 @@ const sanitizeError = (error) => {
  */
 const authenticate = (req, res, next) => {
   if (AUTH_MODE === 'PAT') {
-    // PAT mode: No session required, will use PAT from env
     req.authMode = 'PAT';
     return next();
   }
   
-  // OAUTH mode: Require valid session
+  // OAUTH and HYBRID modes: Require valid session
   const sessionId = req.cookies.session_id;
   
   if (!sessionId) {
@@ -278,16 +302,15 @@ const authenticate = (req, res, next) => {
   
   req.sessionId = sessionId;
   req.tokens = tokens;
-  req.authMode = 'OAUTH';
+  req.authMode = AUTH_MODE; // 'OAUTH' or 'HYBRID'
   next();
 };
 
 /**
  * Middleware to refresh access token if needed (within 5 minutes of expiry)
- * Only applies in OAUTH mode
+ * Applies in OAUTH and HYBRID modes
  */
 const refreshTokenIfNeeded = async (req, res, next) => {
-  // Skip in PAT mode
   if (req.authMode === 'PAT') {
     return next();
   }
@@ -306,7 +329,6 @@ const refreshTokenIfNeeded = async (req, res, next) => {
     console.log(`🔄 Access token expiring soon, refreshing for session: ${sessionId.substring(0, 8)}...`);
     
     try {
-      // Call OAuth token endpoint with refresh_token grant
       const response = await fetch(OAUTH_CONFIG.tokenUrl, {
         method: 'POST',
         headers: {
@@ -322,7 +344,6 @@ const refreshTokenIfNeeded = async (req, res, next) => {
       
       if (!response.ok) {
         console.error('❌ Token refresh failed:', response.status);
-        // Clear the session and return 401
         deleteTokens(sessionId);
         res.clearCookie('session_id');
         return res.status(HTTP_STATUS.UNAUTHORIZED).json({ 
@@ -333,23 +354,55 @@ const refreshTokenIfNeeded = async (req, res, next) => {
       
       const data = await response.json();
       
-      // Update stored tokens with new access token
+      // In HYBRID mode, re-validate JWT and extract tenant from refreshed tokens
+      let tenant = tokens.tenant; // preserve existing tenant by default
+      if (AUTH_MODE === 'HYBRID') {
+        const tokensToTry = [data.id_token, data.access_token].filter(Boolean);
+        const issuerVariants = [
+          HYBRID_CONFIG.issuer,
+          HYBRID_CONFIG.issuer.endsWith('/') ? HYBRID_CONFIG.issuer.slice(0, -1) : HYBRID_CONFIG.issuer + '/',
+        ];
+        const audienceVariants = [HYBRID_CONFIG.audience];
+        if (OAUTH_CONFIG.clientId && OAUTH_CONFIG.clientId !== HYBRID_CONFIG.audience) {
+          audienceVariants.push(OAUTH_CONFIG.clientId);
+        }
+        for (const jwt of tokensToTry) {
+          let found = false;
+          for (const issuer of issuerVariants) {
+            for (const audience of audienceVariants) {
+              try {
+                const { payload } = await jwtVerify(jwt, jwks, { issuer, audience });
+                const extracted = payload[HYBRID_CONFIG.claimKey];
+                if (extracted) {
+                  tenant = extracted;
+                  found = true;
+                  console.log(`✅ Re-validated tenant on refresh: ${tenant}`);
+                  break;
+                }
+              } catch (err) {
+                // Continue trying next combination
+              }
+            }
+            if (found) break;
+          }
+          if (found) break;
+        }
+      }
+      
       storeTokens(
         sessionId,
         data.access_token,
-        data.refresh_token || tokens.refreshToken, // Some providers don't return a new refresh token
+        data.refresh_token || tokens.refreshToken,
         data.expires_in,
-        tokens.userId
+        tokens.userId,
+        tenant
       );
       
-      // Update req.tokens so the current request uses the new token
       req.tokens = getTokens(sessionId);
       
       console.log('✅ Access token refreshed successfully');
     } catch (error) {
       console.error('❌ Error refreshing token:', error.message);
-      // Don't block the request, let it proceed with the old token
-      // If the old token is expired, Snowflake will return 401
     }
   }
   
@@ -369,13 +422,26 @@ const chatRouter = createChatRouter({
   snowflakeDatabase: SNOWFLAKE_CONFIG.database,
   snowflakeSchema: SNOWFLAKE_CONFIG.schema,
   getAuthToken: (req) => {
-    // PAT mode: Use PAT from environment
-    if (req.authMode === 'PAT') {
+    if (req.authMode === 'PAT' || req.authMode === 'HYBRID') {
       return process.env.SNOWFLAKE_PAT;
     }
-    // OAUTH mode: Use session-based access token
     return req.tokens?.accessToken;
   },
+  getSessionVariables: AUTH_MODE === 'HYBRID' ? (req) => {
+    const sessionId = req.cookies?.session_id;
+    const tokens = sessionId ? getTokens(sessionId) : null;
+    if (tokens?.tenant) {
+      console.log(`📋 Injecting session variable ${HYBRID_CONFIG.sessionVarName}=${tokens.tenant}`);
+      return {
+        [HYBRID_CONFIG.sessionVarName]: {
+          value: tokens.tenant,
+          type: 'string',
+          is_session_variable: true
+        }
+      };
+    }
+    return null;
+  } : undefined,
   onError: (error) => {
     console.error('Chat server error:', error.message);
   }
@@ -403,105 +469,149 @@ app.get('/health', (req, res) => {
 // Authentication Endpoints
 // ============================================================================
 
-if (AUTH_MODE === 'OAUTH') {
+if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
   /**
    * OAuth token exchange endpoint
    * POST /auth/exchange
+   * In HYBRID mode, also validates the IdP JWT and extracts the tenant claim.
    */
   app.post('/auth/exchange', async (req, res) => {
-  try {
-    const { code, state } = req.body;
-    
-    if (!code) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
-        error: 'Authorization code is required' 
+    try {
+      const { code, state } = req.body;
+      
+      if (!code) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+          error: 'Authorization code is required' 
+        });
+      }
+      
+      console.log('🔐 Exchanging authorization code for tokens...');
+      
+      const response = await fetch(OAUTH_CONFIG.tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${Buffer.from(`${OAUTH_CONFIG.clientId}:${OAUTH_CONFIG.clientSecret}`).toString('base64')}`
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: code,
+          redirect_uri: OAUTH_CONFIG.redirectUri,
+        }),
       });
-    }
-    
-    console.log('🔐 Exchanging authorization code for tokens...');
-    
-    // Exchange authorization code for access token
-    // Use redirect URI from environment (must match what was used in the authorization request)
-    const response = await fetch(OAUTH_CONFIG.tokenUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${Buffer.from(`${OAUTH_CONFIG.clientId}:${OAUTH_CONFIG.clientSecret}`).toString('base64')}`
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: OAUTH_CONFIG.redirectUri,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Token exchange failed:', response.status, errorText);
-      return res.status(response.status).json({ 
-        error: 'Token exchange failed',
-        details: errorText
-      });
-    }
-    
-    const tokenData = await response.json();
-    
-    // Generate session ID
-    const sessionId = generateSessionId();
-    
-    // Store tokens in memory
-    storeTokens(
-      sessionId,
-      tokenData.access_token,
-      tokenData.refresh_token,
-      tokenData.expires_in,
-      tokenData.user_id || 'unknown'
-    );
-    
-    // Set secure httpOnly cookie
-    // For localhost development with different ports (3000 frontend, 3001 backend),
-    // we need to set the domain explicitly to 'localhost' (without port)
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      path: '/',
-      // Set domain to 'localhost' in development to share across ports
-      domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost'
-    };
-    
-    res.cookie('session_id', sessionId, cookieOptions);
-    
-    console.log('✅ OAuth token exchange successful');
-    
-    res.json({ 
-      success: true,
-      expiresIn: tokenData.expires_in
-    });
-  } catch (error) {
-    console.error('❌ Error during token exchange:', error.message);
-    res.status(500).json({ error: sanitizeError(error) });
-  }
-});
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Token exchange failed:', response.status, errorText);
+        return res.status(response.status).json({ 
+          error: 'Token exchange failed',
+          details: errorText
+        });
+      }
+      
+      const tokenData = await response.json();
+      
+      // In HYBRID mode, validate JWT and extract the tenant claim
+      let tenant = null;
+      if (AUTH_MODE === 'HYBRID') {
+        const tokensToTry = [tokenData.id_token, tokenData.access_token].filter(Boolean);
+        let validated = false;
 
-/**
- * Logout endpoint
- * POST /auth/logout
- */
-app.post('/auth/logout', (req, res) => {
-  const sessionId = req.cookies.session_id;
-  
-  if (sessionId) {
-    deleteTokens(sessionId);
-  }
-  
-  res.clearCookie('session_id');
-  
-  console.log('👋 User logged out');
-  
-  res.json({ success: true });
-});
+        // Normalize issuer: allow match with or without trailing slash
+        const issuerVariants = [
+          HYBRID_CONFIG.issuer,
+          HYBRID_CONFIG.issuer.endsWith('/') ? HYBRID_CONFIG.issuer.slice(0, -1) : HYBRID_CONFIG.issuer + '/',
+        ];
+
+        // Per OIDC spec, the id_token audience is the client ID, while the
+        // access_token audience is the API identifier. Try both so we can
+        // validate whichever token contains the claim we need.
+        const audienceVariants = [HYBRID_CONFIG.audience];
+        if (OAUTH_CONFIG.clientId && OAUTH_CONFIG.clientId !== HYBRID_CONFIG.audience) {
+          audienceVariants.push(OAUTH_CONFIG.clientId);
+        }
+        
+        for (const jwt of tokensToTry) {
+          for (const issuer of issuerVariants) {
+            for (const audience of audienceVariants) {
+              try {
+                const { payload } = await jwtVerify(jwt, jwks, { issuer, audience });
+                const extracted = payload[HYBRID_CONFIG.claimKey];
+                if (extracted) {
+                  tenant = extracted;
+                  validated = true;
+                  console.log(`✅ JWT validated, ${HYBRID_CONFIG.claimKey}=${tenant}`);
+                  break;
+                }
+              } catch (err) {
+                // Expected — trying multiple issuer/audience combinations
+              }
+            }
+            if (validated) break;
+          }
+          if (validated) break;
+        }
+        
+        if (!validated || !tenant) {
+          console.error(`❌ Could not extract '${HYBRID_CONFIG.claimKey}' claim from IdP tokens. Ensure the claim exists and IDP_ISSUER / IDP_AUDIENCE are correct.`);
+          return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+            error: 'JWT validation failed',
+            message: `Could not extract '${HYBRID_CONFIG.claimKey}' claim from IdP tokens`
+          });
+        }
+      }
+      
+      const sessionId = generateSessionId();
+      
+      storeTokens(
+        sessionId,
+        tokenData.access_token,
+        tokenData.refresh_token,
+        tokenData.expires_in,
+        tokenData.user_id || 'unknown',
+        tenant
+      );
+      
+      const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        path: '/',
+        domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost'
+      };
+      
+      res.cookie('session_id', sessionId, cookieOptions);
+      
+      console.log(`✅ Token exchange successful (mode: ${AUTH_MODE})`);
+      
+      res.json({ 
+        success: true,
+        expiresIn: tokenData.expires_in
+      });
+    } catch (error) {
+      console.error('❌ Error during token exchange:', error.message);
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  });
+
+  /**
+   * Logout endpoint
+   * POST /auth/logout
+   */
+  app.post('/auth/logout', (req, res) => {
+    const sessionId = req.cookies.session_id;
+    
+    if (sessionId) {
+      deleteTokens(sessionId);
+    }
+    
+    res.clearCookie('session_id');
+    
+    console.log('👋 User logged out');
+    
+    res.json({ success: true });
+  });
 
   /**
    * Check authentication status
@@ -521,7 +631,6 @@ app.post('/auth/logout', (req, res) => {
       return res.json({ authenticated: false });
     }
     
-    // Check if token is expired
     if (tokens.expiresAt <= Date.now()) {
       deleteTokens(sessionId);
       res.clearCookie('session_id');
@@ -579,10 +688,14 @@ app.listen(PORT, () => {
   console.log(`📊 Database: ${SNOWFLAKE_CONFIG.database}`);
   console.log(`📁 Schema: ${SNOWFLAKE_CONFIG.schema}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  if (AUTH_MODE === 'HYBRID') {
+    console.log(`🔑 HYBRID: IdP JWKS: ${HYBRID_CONFIG.jwksUrl}`);
+    console.log(`🔑 HYBRID: Session var: ${HYBRID_CONFIG.sessionVarName} (from claim: ${HYBRID_CONFIG.claimKey})`);
+  }
   console.log('✨ Chat server integrated at /api/*');
   console.log('Available endpoints:');
   console.log('  GET  /health                          - Health check');
-  if (AUTH_MODE === 'OAUTH') {
+  if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
     console.log('  POST /auth/exchange                   - OAuth token exchange');
     console.log('  POST /auth/logout                     - Logout');
     console.log('  GET  /auth/status                     - Auth status');

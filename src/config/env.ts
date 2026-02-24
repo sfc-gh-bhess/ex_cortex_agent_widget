@@ -7,11 +7,21 @@
  * on the server side and prevents exposure in browser developer tools.
  */
 
+export interface OAuthConfig {
+  loginUrl: string;
+  clientId: string;
+  redirectUri: string;
+  responseType: string;
+  scope?: string;
+  audience?: string;
+  prompt?: string;
+}
+
 export interface SnowflakeConfig {
-  backendUrl: string;  // URL of our secure backend proxy
-  applicationName: string;  // Application name for thread tracking
-  authMode: 'PAT' | 'OAUTH';  // Authentication mode
-  oauthLoginUrl?: string;  // OAuth login URL (required for OAUTH mode)
+  backendUrl: string;
+  applicationName: string;
+  authMode: 'PAT' | 'OAUTH';
+  oauth?: OAuthConfig;
   // Legacy fields kept for backward compatibility (not used for API calls)
   account: string;
   host: string;
@@ -48,19 +58,36 @@ const validateEnvironment = (): SnowflakeConfig => {
     );
   }
   
-  // OAuth login URL is only required for OAUTH mode
-  const oauthLoginUrl = process.env.REACT_APP_OAUTH_LOGIN_URL;
-  
-  if (authMode === 'OAUTH' && !oauthLoginUrl) {
-    throw new Error(
-      'Missing required environment variable: REACT_APP_OAUTH_LOGIN_URL\n' +
-      'This is required when REACT_APP_AUTH_MODE is set to "OAUTH".\n' +
-      'Please set this to your OAuth Identity Provider login URL\n' +
-      'See the README for setup instructions.'
-    );
+  // OAuth configuration (required for OAUTH mode)
+  let oauth: OAuthConfig | undefined;
+  if (authMode === 'OAUTH') {
+    const loginUrl = process.env.REACT_APP_OAUTH_LOGIN_URL;
+    const clientId = process.env.REACT_APP_OAUTH_CLIENT_ID;
+    const redirectUri = process.env.REACT_APP_OAUTH_REDIRECT_URI;
+
+    const missing: string[] = [];
+    if (!loginUrl) missing.push('REACT_APP_OAUTH_LOGIN_URL');
+    if (!clientId) missing.push('REACT_APP_OAUTH_CLIENT_ID');
+    if (!redirectUri) missing.push('REACT_APP_OAUTH_REDIRECT_URI');
+
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing required environment variable(s) for OAUTH mode: ${missing.join(', ')}\n` +
+        'See the README for setup instructions.'
+      );
+    }
+
+    oauth = {
+      loginUrl: loginUrl!,
+      clientId: clientId!,
+      redirectUri: redirectUri!,
+      responseType: process.env.REACT_APP_OAUTH_RESPONSE_TYPE || 'code',
+      scope: process.env.REACT_APP_OAUTH_SCOPE || undefined,
+      audience: process.env.REACT_APP_OAUTH_AUDIENCE || undefined,
+      prompt: process.env.REACT_APP_OAUTH_PROMPT || undefined,
+    };
   }
 
-  // Application name for thread tracking (optional, defaults to 'dash_desai')
   const applicationName = process.env.REACT_APP_APPLICATION_NAME || 'ask_cortex';
 
   // Legacy variables (optional, kept for backward compatibility)
@@ -79,7 +106,7 @@ const validateEnvironment = (): SnowflakeConfig => {
     backendUrl,
     applicationName,
     authMode,
-    oauthLoginUrl,
+    oauth,
     ...legacyVars,
   };
 };
@@ -91,15 +118,49 @@ const validateEnvironment = (): SnowflakeConfig => {
 export const config = validateEnvironment();
 
 /**
+ * Build the full OAuth authorization URL with a fresh random state parameter.
+ * Call this each time you redirect to the IdP so that every login attempt
+ * gets a unique, unpredictable state value.
+ */
+export const buildOAuthLoginUrl = (): string => {
+  if (!config.oauth) {
+    throw new Error('OAuth is not configured. Set REACT_APP_AUTH_MODE=OAUTH and provide OAuth environment variables.');
+  }
+  const { loginUrl, clientId, redirectUri, responseType, scope, audience, prompt } = config.oauth;
+
+  const state = crypto.randomUUID();
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: responseType,
+    state,
+  });
+  if (scope) {
+    params.set('scope', scope);
+  }
+  if (audience) {
+    params.set('audience', audience);
+  }
+  if (prompt) {
+    params.set('prompt', prompt);
+  }
+  return `${loginUrl}?${params.toString()}`;
+};
+
+/**
  * Get configuration status for display (without exposing values)
  */
 export const getEnvConfigStatus = () => {
   const authMode = process.env.REACT_APP_AUTH_MODE || 'OAUTH';
-  
+  const isOAuth = authMode === 'OAUTH';
+
   const requiredEnvVars = [
     { key: 'REACT_APP_BACKEND_URL', label: 'Backend Proxy URL', set: !!process.env.REACT_APP_BACKEND_URL, required: true },
     { key: 'REACT_APP_AUTH_MODE', label: 'Auth Mode', set: !!process.env.REACT_APP_AUTH_MODE, required: false },
-    { key: 'REACT_APP_OAUTH_LOGIN_URL', label: 'OAuth Login URL', set: !!process.env.REACT_APP_OAUTH_LOGIN_URL, required: authMode === 'OAUTH' },
+    { key: 'REACT_APP_OAUTH_LOGIN_URL', label: 'OAuth Login URL', set: !!process.env.REACT_APP_OAUTH_LOGIN_URL, required: isOAuth },
+    { key: 'REACT_APP_OAUTH_CLIENT_ID', label: 'OAuth Client ID', set: !!process.env.REACT_APP_OAUTH_CLIENT_ID, required: isOAuth },
+    { key: 'REACT_APP_OAUTH_REDIRECT_URI', label: 'OAuth Redirect URI', set: !!process.env.REACT_APP_OAUTH_REDIRECT_URI, required: isOAuth },
   ];
 
   const missingRequired = requiredEnvVars.filter(v => v.required && !v.set);

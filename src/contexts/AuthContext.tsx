@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { checkAuthStatus, logout as logoutService } from '../services/authService';
-import { config } from '../config/env';
+import { config, buildOAuthLoginUrl } from '../config/env';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -57,9 +57,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const login = () => {
-    // Only proceed in OAUTH mode
-    if (config.authMode === 'OAUTH' && config.oauthLoginUrl) {
-      window.location.href = config.oauthLoginUrl;
+    if (config.authMode === 'OAUTH') {
+      window.location.href = buildOAuthLoginUrl();
     }
   };
 

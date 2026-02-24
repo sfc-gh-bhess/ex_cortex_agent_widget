@@ -6,15 +6,12 @@
 import React from 'react';
 import { Box, Button, Typography, Paper, Container } from '@mui/material';
 import { Login as LoginIcon } from '@mui/icons-material';
-import { config } from '../config/env';
+import { buildOAuthLoginUrl } from '../config/env';
 import { HEADER_TEXT } from '../constants/textConstants';
 
 export const LoginPage: React.FC = () => {
   const handleLogin = () => {
-    // Redirect to OAuth Identity Provider
-    if (config.oauthLoginUrl) {
-      window.location.href = config.oauthLoginUrl;
-    }
+    window.location.href = buildOAuthLoginUrl();
   };
 
   return (

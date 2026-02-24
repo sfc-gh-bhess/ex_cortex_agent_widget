@@ -1,109 +1,57 @@
 # @chat-overlay/simple-chat-interface
 
-Drop-in React chat interface powered by [Snowflake Cortex Agents REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api). Built with React, TypeScript, and Material-UI.
+Drop-in React chat interface for [Snowflake Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api). Built with React, TypeScript, and Material-UI.
 
-> **💡 Note:** This is a frontend-only package. You'll also need a backend that implements the required API endpoints. See the [Backend Integration Guide](../../server/CHAT_SERVER_README.md) for a ready-to-use Express module.
+This is a **frontend-only** package. It requires a backend that implements the endpoints described in [Backend Requirements](#backend-requirements). The companion [`server/chatServer.js`](../../server/README.md) module provides a ready-to-use Express router.
 
-## Installation
+## Architecture
 
-```bash
-npm install @chat-overlay/simple-chat-interface
+```
+@chat-overlay/simple-chat-interface
+├── components/
+│   ├── FloatingChatInterface   ← Floating button + resizable overlay (most common)
+│   ├── InlineChatInterface     ← Embedded inline panel
+│   └── ChatInterface           ← Low-level base component (advanced)
+├── contexts/
+│   ├── ConfigProvider          ← Backend URL, display options, error callback
+│   └── ChatThemeProvider       ← MUI theme wrapper (dark/light)
+├── hooks/
+│   ├── useChatMessages         ← Message streaming and SSE parsing
+│   ├── useAgentConfig          ← Agent discovery and selection
+│   ├── useThreadManagement     ← Thread CRUD operations
+│   └── useSpeechRecognition    ← Voice input
+├── services/
+│   └── snowflakeAgentsApi      ← HTTP client for backend endpoints
+└── types/
+    ├── chat.ts                 ← Message, thread, annotation types
+    └── chart.ts                ← Vega-Lite chart types
 ```
 
-## Components
+`FloatingChatInterface` and `InlineChatInterface` are convenience wrappers that set up a `ConfigProvider` and render `ChatInterface`. For most use cases, pick one of these two. Use `ChatInterface` directly only if you need full control over the config context.
 
-This package provides three purpose-built components:
+## Sample Application
 
-- **`FloatingChatInterface`** - Floating button that expands to an overlay (most common use case)
-- **`InlineChatInterface`** - Inline/embedded chat interface for your page
-- **`ChatInterface`** - Low-level base component for advanced customization
+The `src/` directory at the repository root contains a complete sample application that demonstrates:
 
-## Quick Start
+- Wrapping `FloatingChatInterface` with authentication (`AuthContext`) and theming (`ThemeContext`)
+- OAuth/OIDC login flow with callback handling
+- Environment-driven configuration for PAT and OAuth modes
+
+This is a good starting point if you're building a new application. If you're adding the chat interface to an **existing** React app, follow the embedding guide below.
+
+## Embedding in an Existing React App
+
+### Installation
+
+```bash
+npm install ./packages/simple-chat-interface
+```
+
+The package has peer dependencies on `@mui/material`, `@emotion/react`, `@emotion/styled`, `react`, and `react-dom`. If your app already uses MUI, these are satisfied automatically.
 
 ### Floating Chat Button (Recommended)
 
-```tsx
-import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
-
-function MyApp() {
-  return (
-    <ChatThemeProvider>
-      <div>
-        <h1>My Application</h1>
-        <FloatingChatInterface backendUrl="http://localhost:3001" />
-      </div>
-    </ChatThemeProvider>
-  );
-}
-```
-
-### Inline Chat
-
-```tsx
-import { InlineChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
-
-function MyApp() {
-  return (
-    <ChatThemeProvider>
-      <div>
-        <h1>My Application</h1>
-        <InlineChatInterface backendUrl="http://localhost:3001" />
-      </div>
-    </ChatThemeProvider>
-  );
-}
-```
-
-## Props
-
-### FloatingChatInterface
-
-| Prop | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| `backendUrl` | `string` | Yes | - | URL of your backend proxy server that communicates with Snowflake |
-| `defaultWidth` | `string \| number` | No | `'70%'` | Default width when opened |
-| `defaultHeight` | `string \| number` | No | `'70vh'` | Default height when opened |
-| `buttonPosition` | `'bottom-right' \| 'bottom-left' \| 'top-right' \| 'top-left'` | No | `'bottom-right'` | Position of floating button |
-| `initialState` | `'minimized' \| 'expanded'` | No | `'minimized'` | Initial state |
-| `initialAgent` | `string` | No | - | Initial agent to select |
-| `onError` | `(error: string) => void` | No | - | Callback when an error occurs |
-| `displayConfig` | `DisplayConfig` | No | - | Configuration for optional sections |
-| `applicationName` | `string` | No | `'simple_chat_interface'` | Application name for thread tracking |
-
-### InlineChatInterface
-
-| Prop | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| `backendUrl` | `string` | Yes | - | URL of your backend proxy server |
-| `initialAgent` | `string` | No | - | Initial agent to select |
-| `onError` | `(error: string) => void` | No | - | Callback when an error occurs |
-| `className` | `string` | No | - | Custom CSS class |
-| `style` | `React.CSSProperties` | No | - | Custom inline styles |
-| `displayConfig` | `DisplayConfig` | No | - | Configuration for optional sections |
-| `applicationName` | `string` | No | `'simple_chat_interface'` | Application name for thread tracking |
-
-### ChatInterface (Advanced)
-
-| Prop | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| `className` | `string` | No | - | Custom CSS class |
-| `style` | `React.CSSProperties` | No | - | Custom inline styles |
-
-**Note:** `ChatInterface` requires a `ConfigProvider` wrapper to function.
-
-### DisplayConfig
-
-```typescript
-interface DisplayConfig {
-  showThinking?: boolean;       // Show "Thinking & Planning" section (default: false)
-  showSqlQueries?: boolean;     // Show "SQL Queries Executed" section (default: false)
-  showAnnotations?: boolean;    // Show "Annotations" section (default: false)
-}
-```
-
-## Usage Examples
-
-### Basic Floating Chat
+A floating action button in the corner of your app. Clicking it opens a resizable overlay.
 
 ```tsx
 import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
@@ -111,73 +59,18 @@ import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-c
 function App() {
   return (
     <ChatThemeProvider>
+      <YourExistingApp />
       <FloatingChatInterface backendUrl="http://localhost:3001" />
     </ChatThemeProvider>
   );
 }
 ```
 
-### Floating Chat with Custom Configuration
-
-```tsx
-import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
-
-function App() {
-  return (
-    <ChatThemeProvider>
-      <div>
-        <h1>My Application</h1>
-        <p>Your main content here...</p>
-        
-        {/* Floating chat overlay */}
-        <FloatingChatInterface 
-          backendUrl="http://localhost:3001"
-          defaultWidth="70%"
-          defaultHeight="70vh"
-          buttonPosition="bottom-right"
-          initialState="minimized"
-          applicationName="my_app"
-          displayConfig={{
-            showThinking: false,
-            showSqlQueries: false,
-            showAnnotations: false
-          }}
-        />
-      </div>
-    </ChatThemeProvider>
-  );
-}
-```
-
-**Features:**
-- ✅ Minimized as a floating button by default
-- ✅ Opens as an overlay on top of your content
-- ✅ Resizable by dragging the top-left corner
-- ✅ Minimize button to collapse back to floating button
-- ✅ Configurable size and position
-- ✅ Thread history panel (click history icon in chat input)
-
-### Floating Chat with Custom Size
-
-```tsx
-<FloatingChatInterface 
-  backendUrl="http://localhost:3001"
-  defaultWidth="500px"      // Fixed width
-  defaultHeight="80vh"      // 80% of viewport height
-  buttonPosition="bottom-left"
-/>
-```
-
-### Floating Chat Starting Expanded
-
-```tsx
-<FloatingChatInterface 
-  backendUrl="http://localhost:3001"
-  initialState="expanded"    // Start with overlay open
-/>
-```
+The overlay is draggable, resizable, and minimizable. Thread history is accessible via the history icon in the chat input area.
 
 ### Inline Chat (Embedded)
+
+Renders the chat interface inline within your page layout. Useful for dedicated chat pages or split-panel UIs.
 
 ```tsx
 import { InlineChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
@@ -185,47 +78,39 @@ import { InlineChatInterface, ChatThemeProvider } from '@chat-overlay/simple-cha
 function App() {
   return (
     <ChatThemeProvider>
-      <div style={{ height: '80vh' }}>
-        <InlineChatInterface 
-          backendUrl="http://localhost:3001"
-          applicationName="my_app"
-          displayConfig={{
-            showThinking: true,
-            showSqlQueries: true,
-            showAnnotations: true
-          }}
-        />
+      <div style={{ display: 'flex', height: '100vh' }}>
+        <aside style={{ width: 300 }}>Sidebar</aside>
+        <main style={{ flex: 1 }}>
+          <InlineChatInterface backendUrl="http://localhost:3001" />
+        </main>
       </div>
     </ChatThemeProvider>
   );
 }
 ```
 
-### With Error Handling
+### Using Your Existing MUI Theme
+
+If your app already has a `ThemeProvider`, you can skip `ChatThemeProvider`:
 
 ```tsx
-import { FloatingChatInterface, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { FloatingChatInterface } from '@chat-overlay/simple-chat-interface';
+
+const myTheme = createTheme({ /* your config */ });
 
 function App() {
-  const handleError = (error: string) => {
-    console.error('Chat error:', error);
-    // Handle error (show notification, log to service, etc.)
-  };
-
   return (
-    <ChatThemeProvider>
-      <FloatingChatInterface 
-        backendUrl="http://localhost:3001"
-        onError={handleError}
-      />
-    </ChatThemeProvider>
+    <ThemeProvider theme={myTheme}>
+      <FloatingChatInterface backendUrl="http://localhost:3001" />
+    </ThemeProvider>
   );
 }
 ```
 
-### Advanced: Custom Configuration with ChatInterface
+### Advanced: ChatInterface with ConfigProvider
 
-For advanced use cases where you need full control over the configuration:
+For full control over configuration (custom hooks, nested contexts, etc.):
 
 ```tsx
 import { ChatInterface, ConfigProvider, ChatThemeProvider } from '@chat-overlay/simple-chat-interface';
@@ -233,7 +118,7 @@ import { ChatInterface, ConfigProvider, ChatThemeProvider } from '@chat-overlay/
 function App() {
   return (
     <ChatThemeProvider>
-      <ConfigProvider 
+      <ConfigProvider
         config={{
           backendUrl: 'http://localhost:3001',
           applicationName: 'my_app',
@@ -254,260 +139,120 @@ function App() {
 }
 ```
 
-### Within Existing MUI Theme
+## Props Reference
 
-If you already have a Material-UI theme in your app, you can skip `ChatThemeProvider`:
+### FloatingChatInterface
 
-```tsx
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { FloatingChatInterface } from '@chat-overlay/simple-chat-interface';
+| Prop | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `backendUrl` | `string` | Yes | — | URL of your backend server |
+| `defaultWidth` | `string \| number` | No | `'70%'` | Overlay width when expanded |
+| `defaultHeight` | `string \| number` | No | `'70vh'` | Overlay height when expanded |
+| `buttonPosition` | `'bottom-right' \| 'bottom-left' \| 'top-right' \| 'top-left'` | No | `'bottom-right'` | Floating button position |
+| `initialState` | `'minimized' \| 'expanded'` | No | `'minimized'` | State on first render |
+| `initialAgent` | `string` | No | — | Pre-select a specific agent |
+| `onError` | `(error: string) => void` | No | — | Error callback |
+| `displayConfig` | `DisplayConfig` | No | — | Toggle optional UI sections |
+| `applicationName` | `string` | No | `'simple_chat_interface'` | Application name for thread tracking |
 
-const myTheme = createTheme({
-  // Your existing theme configuration
-});
+### InlineChatInterface
 
-function App() {
-  return (
-    <ThemeProvider theme={myTheme}>
-      <FloatingChatInterface backendUrl="http://localhost:3001" />
-    </ThemeProvider>
-  );
+| Prop | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `backendUrl` | `string` | Yes | — | URL of your backend server |
+| `initialAgent` | `string` | No | — | Pre-select a specific agent |
+| `onError` | `(error: string) => void` | No | — | Error callback |
+| `className` | `string` | No | — | CSS class for the container |
+| `style` | `React.CSSProperties` | No | — | Inline styles for the container |
+| `displayConfig` | `DisplayConfig` | No | — | Toggle optional UI sections |
+| `applicationName` | `string` | No | `'simple_chat_interface'` | Application name for thread tracking |
+
+### DisplayConfig
+
+```typescript
+interface DisplayConfig {
+  showThinking?: boolean;      // Show "Thinking & Planning" section (default: false)
+  showSqlQueries?: boolean;    // Show "SQL Queries Executed" section (default: false)
+  showAnnotations?: boolean;   // Show "Annotations" section (default: false)
 }
 ```
+
+## Configuring for Authentication Modes
+
+The chat interface component itself is **authentication-agnostic** — it just calls `backendUrl` endpoints. Authentication is handled by the backend (see [server/README.md](../../server/README.md)).
+
+However, the **sample application** (`src/`) includes full authentication support, configured via frontend environment variables:
+
+| Mode | `REACT_APP_AUTH_MODE` | Additional Frontend Env Vars | Behavior |
+|------|-----------------------|------------------------------|----------|
+| **PAT** | `PAT` | None | No login page. Immediate access. |
+| **OAuth** | `OAUTH` | `REACT_APP_OAUTH_LOGIN_URL`, `REACT_APP_OAUTH_CLIENT_ID`, `REACT_APP_OAUTH_REDIRECT_URI`, optionally `REACT_APP_OAUTH_SCOPE`, `REACT_APP_OAUTH_AUDIENCE`, `REACT_APP_OAUTH_PROMPT` | Users see a login page and authenticate via IdP. |
+| **Hybrid** | `OAUTH` | Same as OAuth | Same login flow as OAuth. The backend distinction is transparent to the frontend. |
+
+See `env.frontend.example` in the repository root for all available options with documentation.
 
 ## Backend Requirements
 
-This component requires a backend that implements the following API endpoints. We provide a ready-to-use Express module - see the [Backend Integration Guide](../../server/CHAT_SERVER_README.md).
-
-### Required Endpoints
+The chat interface expects the following API endpoints. The companion [`server/chatServer.js`](../../server/README.md) module implements all of them.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/agents` | GET | List all available agents with configuration |
-| `/api/agents/:name` | GET | Get details for a specific agent |
-| `/api/agents/:name/messages` | POST | Send a message to an agent (streaming SSE) |
+| `/api/agents` | GET | List available agents with configuration |
+| `/api/agents/:name` | GET | Get a specific agent's details |
+| `/api/agents/:name/messages` | POST | Send a message (returns SSE stream) |
 | `/api/threads` | POST | Create a new conversation thread |
-| `/api/threads` | GET | List all user's conversation threads |
-| `/api/threads/:id` | GET | Get conversation history for a thread |
+| `/api/threads` | GET | List all threads |
+| `/api/threads/:id` | GET | Get conversation history |
 | `/api/threads/:id` | POST | Update thread name |
 | `/api/threads/:id` | DELETE | Delete a thread |
 
-### Quick Backend Setup
+### SSE Event Types
 
-**Option 1: Use our Express module (recommended)**
+The `/api/agents/:name/messages` endpoint returns a Server-Sent Events stream. The component handles these event types:
 
-```javascript
-const { createChatRouter } = require('./chatServer');
-
-app.use('/api', createChatRouter({
-  snowflakeHost: process.env.SNOWFLAKE_HOST,
-  snowflakeDatabase: process.env.SNOWFLAKE_DATABASE,
-  snowflakeSchema: process.env.SNOWFLAKE_SCHEMA,
-  getAuthToken: (req) => process.env.SNOWFLAKE_PAT
-}));
-```
-
-See the [Backend Integration Guide](../../server/CHAT_SERVER_README.md) for complete setup instructions.
-
-**Option 2: Implement your own**
-
-See the API specifications below for request/response formats.
-
-### API Specifications
-
-#### GET /api/agents
-
-Returns agent configuration:
-
-```json
-{
-  "agents": {
-    "agent_name": {
-      "displayName": "Agent Display Name",
-      "visible": true,
-      "starterQuestions": ["Question 1?", "Question 2?"],
-      "description": "Agent description"
-    }
-  },
-  "defaultAgent": "agent_name"
-}
-```
-
-#### POST /api/agents/:agentName/messages
-
-Proxies streaming chat requests to Snowflake. Accepts:
-
-```json
-{
-  "messages": [
-    {
-      "role": "user",
-      "content": [{"type": "text", "text": "User message"}]
-    }
-  ],
-  "thread_id": "optional_thread_id",
-  "parent_message_id": 0,
-  "tool_choice": {"type": "auto"},
-  "stream": true
-}
-```
-
-Returns Server-Sent Events (SSE) stream with events:
-- `response.text.delta` - Streaming text response
-- `response.status` - Status updates  
-- `response.tool_result` - Tool execution results
-- `response.thinking` - Thinking process text
-- `response.chart` - Chart visualizations (Vega-Lite)
-- `response.text.annotation` - Citations and references
-- `metadata` - Message metadata (includes `message_id`)
-
-#### Thread Endpoints
-
-**POST /api/threads** - Create thread
-
-Request:
-```json
-{"origin_application": "your_app_name"}
-```
-
-Response:
-```json
-{
-  "thread_id": "123456",
-  "origin_application": "your_app_name",
-  "created_on": 1234567890
-}
-```
-
-**GET /api/threads** - List threads
-
-Response:
-```json
-[
-  {
-    "thread_id": 123456,
-    "thread_name": "Thread name",
-    "created_on": 1234567890,
-    "updated_on": 1234567890
-  }
-]
-```
-
-**GET /api/threads/:id** - Get thread history
-
-Response:
-```json
-{
-  "metadata": {
-    "thread_id": 123456,
-    "thread_name": "Thread name",
-    "created_on": 1234567890,
-    "updated_on": 1234567890
-  },
-  "messages": [
-    {
-      "message_id": 1,
-      "parent_id": 0,
-      "created_on": 1234567890,
-      "role": "user",
-      "message_payload": "{...}"
-    }
-  ]
-}
-```
-
-**POST /api/threads/:id** - Update thread name
-
-Request:
-```json
-{"thread_name": "New name"}
-```
-
-Response:
-```
-204 No Content
-```
-
-**DELETE /api/threads/:id** - Delete thread
-
-Response:
-```
-204 No Content
-```
+| Event | Description |
+|-------|-------------|
+| `response.text.delta` | Streaming text content |
+| `response.status` | Status updates |
+| `response.tool_result` | Tool execution results |
+| `response.thinking` | Agent reasoning process |
+| `response.chart` | Vega-Lite chart visualization |
+| `response.text.annotation` | Citations and references |
+| `metadata` | Message metadata (includes `message_id`) |
 
 ## Features
 
-- Real-time streaming chat interface
-- Support for multiple Snowflake Cortex Agents
-- Thread management (create, list, revisit conversations)
+- Real-time streaming responses via SSE
+- Multi-agent support with agent discovery
+- Thread management (create, list, revisit, rename, delete)
 - Thinking process visualization (optional)
 - SQL query display (optional)
-- Chart visualizations (Vega-Lite)
+- Chart visualizations (Vega-Lite via Recharts)
 - Citations and annotations (optional)
-- Starter questions
+- Starter questions per agent
 - Dark/light theme support
-- Voice input (speech recognition)
-- Responsive design
-- Full TypeScript support
+- Voice input (speech-to-text, requires Chrome/Edge/Safari)
+- Resizable floating overlay with drag support
+- Responsive design (desktop, tablet, mobile)
+- Full TypeScript support with exported types
 
-## Migration Guide
+## Exported Types and Hooks
 
-If you were using `SimpleChatInterface` from a previous version, here's how to migrate:
+For advanced usage, the package exports its internal hooks and types:
 
-### From SimpleChatInterface (Overlay Mode)
+```typescript
+// Hooks
+import { useAgentConfig, useChatMessages, useAccordionState, useSpeechRecognition } from '@chat-overlay/simple-chat-interface';
 
-**Before:**
-```tsx
-<SimpleChatInterface 
-  backendUrl="http://localhost:3001"
-  overlay={{
-    enabled: true,
-    defaultWidth: '70%',
-    defaultHeight: '70vh',
-    buttonPosition: 'bottom-right',
-    initialState: 'minimized'
-  }}
-  displayConfig={{ showThinking: false }}
-/>
+// Contexts
+import { ConfigProvider, useConfig } from '@chat-overlay/simple-chat-interface';
+
+// Types
+import type { ChatMessage, AgentConfig, ChatConfig, DisplayConfig, ChartContent } from '@chat-overlay/simple-chat-interface';
+
+// Theme
+import { createAppTheme } from '@chat-overlay/simple-chat-interface';
 ```
-
-**After:**
-```tsx
-<FloatingChatInterface 
-  backendUrl="http://localhost:3001"
-  defaultWidth="70%"
-  defaultHeight="70vh"
-  buttonPosition="bottom-right"
-  initialState="minimized"
-  displayConfig={{ showThinking: false }}
-/>
-```
-
-### From SimpleChatInterface (Inline Mode)
-
-**Before:**
-```tsx
-<SimpleChatInterface 
-  backendUrl="http://localhost:3001"
-  overlay={{ enabled: false }}
-  displayConfig={{ showThinking: true }}
-/>
-```
-
-**After:**
-```tsx
-<InlineChatInterface 
-  backendUrl="http://localhost:3001"
-  displayConfig={{ showThinking: true }}
-/>
-```
-
-### Key Changes
-
-1. **Component Names:** `SimpleChatInterface` → `FloatingChatInterface` or `InlineChatInterface`
-2. **Props Flattened:** Overlay properties are now top-level props (no nested `overlay` object)
-3. **Explicit Components:** Use purpose-specific components instead of toggling modes with flags
-4. **Application Name:** New `applicationName` prop for thread tracking (defaults to `'simple_chat_interface'`)
 
 ## License
 
