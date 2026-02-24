@@ -82,7 +82,7 @@ The sample backend supports three authentication modes, selected via the `AUTH_M
 
 **Hybrid** — Users authenticate via an IdP, but Snowflake API calls use a shared service PAT. The backend validates the IdP JWT, extracts a configured claim (e.g., `tenant`), and passes it to the Cortex Agent as a session variable for row-level data filtering.
 
-> For both OAuth and Hybrid modes, the frontend uses `REACT_APP_AUTH_MODE=OAUTH`. The distinction is entirely on the backend.
+> For both OAuth and Hybrid modes, the frontend uses `VITE_AUTH_MODE=OAUTH`. The distinction is entirely on the backend.
 
 ## Quick Start
 
@@ -131,13 +131,13 @@ OAUTH_REDIRECT_URI=http://localhost:3000/auth/callback
 Edit `.env.local` (frontend):
 
 ```bash
-REACT_APP_BACKEND_URL=http://localhost:3001
-REACT_APP_AUTH_MODE=OAUTH
+VITE_BACKEND_URL=http://localhost:3001
+VITE_AUTH_MODE=OAUTH
 
-REACT_APP_OAUTH_LOGIN_URL=https://your-idp.example.com/authorize
-REACT_APP_OAUTH_CLIENT_ID=your_client_id
-REACT_APP_OAUTH_REDIRECT_URI=http://localhost:3000/auth/callback
-REACT_APP_OAUTH_SCOPE=openid profile email
+VITE_OAUTH_LOGIN_URL=https://your-idp.example.com/authorize
+VITE_OAUTH_CLIENT_ID=your_client_id
+VITE_OAUTH_REDIRECT_URI=http://localhost:3000/auth/callback
+VITE_OAUTH_SCOPE=openid profile email
 ```
 
 For PAT mode (simpler, no IdP required), set `AUTH_MODE=PAT` and provide `SNOWFLAKE_PAT` instead. See the example files for all options.

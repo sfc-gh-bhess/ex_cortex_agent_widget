@@ -5,6 +5,10 @@ echo "=== Installing cortex-chat-interface ==="
 (cd cortex-chat-interface && npm install)
 
 echo ""
+echo "=== Installing cortex-chat-server ==="
+(cd cortex-chat-server && npm install)
+
+echo ""
 echo "=== Installing sample-app ==="
 (cd sample-app && npm install)
 

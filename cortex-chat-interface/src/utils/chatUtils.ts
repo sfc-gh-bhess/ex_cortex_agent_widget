@@ -3,6 +3,8 @@
  * Helper functions for chat message processing and formatting
  */
 
+import { CHAT_TEXT } from '../constants/textConstants';
+
 /**
  * Split thinking text into paragraph chunks (2-3 sentences each)
  */
@@ -95,8 +97,6 @@ export const extractVerificationInfo = (data: any) => {
  * Greetings are defined in textConstants.ts for easy customization
  */
 export const getTimeBasedGreeting = (): string => {
-  // Import at runtime to avoid circular dependencies
-  const CHAT_TEXT = require('../constants/textConstants').CHAT_TEXT;
   const hour = new Date().getHours();
   
   // Pick random greeting from appropriate time period

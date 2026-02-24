@@ -57,13 +57,13 @@ OAUTH_REDIRECT_URI=http://localhost:3000/auth/callback
 **Frontend** (`.env.local`) — Backend URL, auth mode, and OAuth settings:
 
 ```bash
-REACT_APP_BACKEND_URL=http://localhost:3001
-REACT_APP_AUTH_MODE=OAUTH
+VITE_BACKEND_URL=http://localhost:3001
+VITE_AUTH_MODE=OAUTH
 
-REACT_APP_OAUTH_LOGIN_URL=https://your-idp.example.com/authorize
-REACT_APP_OAUTH_CLIENT_ID=your_client_id
-REACT_APP_OAUTH_REDIRECT_URI=http://localhost:3000/auth/callback
-REACT_APP_OAUTH_SCOPE=openid profile email
+VITE_OAUTH_LOGIN_URL=https://your-idp.example.com/authorize
+VITE_OAUTH_CLIENT_ID=your_client_id
+VITE_OAUTH_REDIRECT_URI=http://localhost:3000/auth/callback
+VITE_OAUTH_SCOPE=openid profile email
 ```
 
 See `env.backend.example` and `env.frontend.example` for the full set of options including PAT and Hybrid mode.
@@ -90,13 +90,13 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Authentication Modes
 
-| Mode | Backend `AUTH_MODE` | Frontend `REACT_APP_AUTH_MODE` | Description |
+| Mode | Backend `AUTH_MODE` | Frontend `VITE_AUTH_MODE` | Description |
 |------|--------------------|-----------------------------|-------------|
 | **PAT** | `PAT` | `PAT` | Shared Snowflake PAT. No login page. |
 | **OAuth** | `OAUTH` | `OAUTH` | Per-user Snowflake tokens via IdP. |
 | **Hybrid** | `HYBRID` | `OAUTH` | Shared PAT + IdP tenant claim as session variable. |
 
-For Hybrid mode, the frontend always uses `REACT_APP_AUTH_MODE=OAUTH`. Additional backend variables are required — see `env.backend.example`.
+For Hybrid mode, the frontend always uses `VITE_AUTH_MODE=OAUTH`. Additional backend variables are required — see `env.backend.example`.
 
 ## npm Scripts
 
@@ -116,9 +116,10 @@ sample-app/
 ├── .env                     Backend config (gitignored)
 ├── .env.local               Frontend config (gitignored)
 ├── package.json
-├── craco.config.js          CRA build customization
+├── vite.config.ts           Vite build configuration
 ├── tsconfig.json
-├── public/                  Static assets (index.html, images)
+├── index.html               App entry point (served by Vite)
+├── public/                  Static assets (favicon, images)
 ├── src/
 │   ├── index.tsx            App entry point, routing, error boundary
 │   ├── config/env.ts        Environment validation, OAuth URL builder
@@ -143,8 +144,8 @@ sample-app/
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| Cannot connect to backend | Backend not running | Run `npm run start:server` and check `REACT_APP_BACKEND_URL` |
+| Cannot connect to backend | Backend not running | Run `npm run start:server` and check `VITE_BACKEND_URL` |
 | HTTP 401 Unauthorized | Invalid or expired token | **PAT:** Check `SNOWFLAKE_PAT`. **OAuth:** Verify IdP config and token exchange. **Hybrid:** Check `IDP_ISSUER`, `IDP_AUDIENCE`, `CLAIM_KEY` |
 | HTTP 404 Agent Not Found | Agent doesn't exist in specified database/schema | Verify `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`, and agent name (case-sensitive) |
-| OAuth login loops silently | IdP session persists after app logout | Set `REACT_APP_OAUTH_PROMPT=login` in `.env.local` to force re-authentication |
+| OAuth login loops silently | IdP session persists after app logout | Set `VITE_OAUTH_PROMPT=login` in `.env.local` to force re-authentication |
 | Port already in use | Previous process still running | `lsof -ti:3000 \| xargs kill -9` or `lsof -ti:3001 \| xargs kill -9` |

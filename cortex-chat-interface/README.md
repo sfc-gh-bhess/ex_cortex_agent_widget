@@ -183,10 +183,10 @@ The chat interface component itself is **authentication-agnostic** — it just c
 
 The **sample application** (`sample-app/`) includes full authentication support, configured via frontend environment variables:
 
-| Mode | `REACT_APP_AUTH_MODE` | Additional Frontend Env Vars | Behavior |
+| Mode | `VITE_AUTH_MODE` | Additional Frontend Env Vars | Behavior |
 |------|-----------------------|------------------------------|----------|
 | **PAT** | `PAT` | None | No login page. Immediate access. |
-| **OAuth** | `OAUTH` | `REACT_APP_OAUTH_LOGIN_URL`, `REACT_APP_OAUTH_CLIENT_ID`, `REACT_APP_OAUTH_REDIRECT_URI`, optionally `REACT_APP_OAUTH_SCOPE`, `REACT_APP_OAUTH_AUDIENCE`, `REACT_APP_OAUTH_PROMPT` | Users see a login page and authenticate via IdP. |
+| **OAuth** | `OAUTH` | `VITE_OAUTH_LOGIN_URL`, `VITE_OAUTH_CLIENT_ID`, `VITE_OAUTH_REDIRECT_URI`, optionally `VITE_OAUTH_SCOPE`, `VITE_OAUTH_AUDIENCE`, `VITE_OAUTH_PROMPT` | Users see a login page and authenticate via IdP. |
 | **Hybrid** | `OAUTH` | Same as OAuth | Same login flow as OAuth. The backend distinction is transparent to the frontend. |
 
 See `sample-app/env.frontend.example` for all available options.

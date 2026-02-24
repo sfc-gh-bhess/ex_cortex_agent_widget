@@ -136,7 +136,7 @@ const validateEnvironment = () => {
               Required Environment Variable:
             </p>
             <ul style={{ paddingLeft: '1rem', lineHeight: '1.6' }}>
-              <li>REACT_APP_BACKEND_URL</li>
+              <li>VITE_BACKEND_URL</li>
             </ul>
           </div>
           <p style={{ fontSize: '0.875rem', opacity: 0.8 }}>
@@ -282,18 +282,6 @@ const bootstrap = () => {
     </React.StrictMode>
   );
 
-  // Register service worker for PWA capabilities if needed
-  if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/service-worker.js')
-        .then(() => {
-          // Service worker registered successfully
-        })
-        .catch(() => {
-          // Service worker registration failed
-        });
-    });
-  }
 };
 
 // Start the application

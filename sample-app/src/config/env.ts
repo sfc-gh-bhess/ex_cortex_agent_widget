@@ -1,10 +1,12 @@
 /**
  * Environment configuration with validation and type safety
  * All sensitive data should be provided via environment variables
- * 
- * SECURITY NOTE: The frontend now communicates with a secure backend proxy
+ *
+ * SECURITY NOTE: The frontend communicates with a secure backend proxy
  * instead of directly calling Snowflake APIs. This keeps the PAT token secure
  * on the server side and prevents exposure in browser developer tools.
+ *
+ * Vite exposes env vars prefixed with VITE_ via import.meta.env
  */
 
 export interface OAuthConfig {
@@ -17,58 +19,46 @@ export interface OAuthConfig {
   prompt?: string;
 }
 
-export interface SnowflakeConfig {
+export interface AppConfig {
   backendUrl: string;
   applicationName: string;
   authMode: 'PAT' | 'OAUTH';
   oauth?: OAuthConfig;
-  // Legacy fields kept for backward compatibility (not used for API calls)
-  account: string;
-  host: string;
-  warehouse: string;
-  demoUser: string;
-  demoUserRole: string;
-  agentEndpoint: string;
-  database: string;
-  schema: string;
 }
 
 /**
  * Validates that all required environment variables are present
  */
-const validateEnvironment = (): SnowflakeConfig => {
-  // Backend URL is always required
-  const backendUrl = process.env.REACT_APP_BACKEND_URL;
-  
+const validateEnvironment = (): AppConfig => {
+  const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
   if (!backendUrl) {
     throw new Error(
-      'Missing required environment variable: REACT_APP_BACKEND_URL\n' +
+      'Missing required environment variable: VITE_BACKEND_URL\n' +
       'Please set this to your backend proxy server URL (e.g., http://localhost:3001)\n' +
       'See the README for setup instructions.'
     );
   }
-  
-  // Auth mode validation
-  const authMode = (process.env.REACT_APP_AUTH_MODE || 'OAUTH') as 'PAT' | 'OAUTH';
-  
+
+  const authMode = (import.meta.env.VITE_AUTH_MODE || 'OAUTH') as 'PAT' | 'OAUTH';
+
   if (authMode !== 'PAT' && authMode !== 'OAUTH') {
     throw new Error(
-      'Invalid REACT_APP_AUTH_MODE. Must be "PAT" or "OAUTH".\n' +
+      'Invalid VITE_AUTH_MODE. Must be "PAT" or "OAUTH".\n' +
       'See the README for setup instructions.'
     );
   }
-  
-  // OAuth configuration (required for OAUTH mode)
+
   let oauth: OAuthConfig | undefined;
   if (authMode === 'OAUTH') {
-    const loginUrl = process.env.REACT_APP_OAUTH_LOGIN_URL;
-    const clientId = process.env.REACT_APP_OAUTH_CLIENT_ID;
-    const redirectUri = process.env.REACT_APP_OAUTH_REDIRECT_URI;
+    const loginUrl = import.meta.env.VITE_OAUTH_LOGIN_URL;
+    const clientId = import.meta.env.VITE_OAUTH_CLIENT_ID;
+    const redirectUri = import.meta.env.VITE_OAUTH_REDIRECT_URI;
 
     const missing: string[] = [];
-    if (!loginUrl) missing.push('REACT_APP_OAUTH_LOGIN_URL');
-    if (!clientId) missing.push('REACT_APP_OAUTH_CLIENT_ID');
-    if (!redirectUri) missing.push('REACT_APP_OAUTH_REDIRECT_URI');
+    if (!loginUrl) missing.push('VITE_OAUTH_LOGIN_URL');
+    if (!clientId) missing.push('VITE_OAUTH_CLIENT_ID');
+    if (!redirectUri) missing.push('VITE_OAUTH_REDIRECT_URI');
 
     if (missing.length > 0) {
       throw new Error(
@@ -81,33 +71,20 @@ const validateEnvironment = (): SnowflakeConfig => {
       loginUrl: loginUrl!,
       clientId: clientId!,
       redirectUri: redirectUri!,
-      responseType: process.env.REACT_APP_OAUTH_RESPONSE_TYPE || 'code',
-      scope: process.env.REACT_APP_OAUTH_SCOPE || undefined,
-      audience: process.env.REACT_APP_OAUTH_AUDIENCE || undefined,
-      prompt: process.env.REACT_APP_OAUTH_PROMPT || undefined,
+      responseType: import.meta.env.VITE_OAUTH_RESPONSE_TYPE || 'code',
+      scope: import.meta.env.VITE_OAUTH_SCOPE || undefined,
+      audience: import.meta.env.VITE_OAUTH_AUDIENCE || undefined,
+      prompt: import.meta.env.VITE_OAUTH_PROMPT || undefined,
     };
   }
 
-  const applicationName = process.env.REACT_APP_APPLICATION_NAME || 'ask_cortex';
-
-  // Legacy variables (optional, kept for backward compatibility)
-  const legacyVars = {
-    account: process.env.REACT_APP_ACCOUNT || 'not-set',
-    host: process.env.REACT_APP_HOST || 'not-set',
-    warehouse: process.env.REACT_APP_WAREHOUSE || 'not-set',
-    demoUser: process.env.REACT_APP_DEMO_USER || 'not-set',
-    demoUserRole: process.env.REACT_APP_DEMO_USER_ROLE || 'not-set',
-    agentEndpoint: process.env.REACT_APP_AGENT_ENDPOINT || 'not-set',
-    database: process.env.REACT_APP_DATABASE || 'snowflake_intelligence',
-    schema: process.env.REACT_APP_SCHEMA || 'agents',
-  };
+  const applicationName = import.meta.env.VITE_APPLICATION_NAME || 'ask_cortex';
 
   return {
     backendUrl,
     applicationName,
     authMode,
     oauth,
-    ...legacyVars,
   };
 };
 
@@ -124,7 +101,7 @@ export const config = validateEnvironment();
  */
 export const buildOAuthLoginUrl = (): string => {
   if (!config.oauth) {
-    throw new Error('OAuth is not configured. Set REACT_APP_AUTH_MODE=OAUTH and provide OAuth environment variables.');
+    throw new Error('OAuth is not configured. Set VITE_AUTH_MODE=OAUTH and provide OAuth environment variables.');
   }
   const { loginUrl, clientId, redirectUri, responseType, scope, audience, prompt } = config.oauth;
 
@@ -147,29 +124,3 @@ export const buildOAuthLoginUrl = (): string => {
   }
   return `${loginUrl}?${params.toString()}`;
 };
-
-/**
- * Get configuration status for display (without exposing values)
- */
-export const getEnvConfigStatus = () => {
-  const authMode = process.env.REACT_APP_AUTH_MODE || 'OAUTH';
-  const isOAuth = authMode === 'OAUTH';
-
-  const requiredEnvVars = [
-    { key: 'REACT_APP_BACKEND_URL', label: 'Backend Proxy URL', set: !!process.env.REACT_APP_BACKEND_URL, required: true },
-    { key: 'REACT_APP_AUTH_MODE', label: 'Auth Mode', set: !!process.env.REACT_APP_AUTH_MODE, required: false },
-    { key: 'REACT_APP_OAUTH_LOGIN_URL', label: 'OAuth Login URL', set: !!process.env.REACT_APP_OAUTH_LOGIN_URL, required: isOAuth },
-    { key: 'REACT_APP_OAUTH_CLIENT_ID', label: 'OAuth Client ID', set: !!process.env.REACT_APP_OAUTH_CLIENT_ID, required: isOAuth },
-    { key: 'REACT_APP_OAUTH_REDIRECT_URI', label: 'OAuth Redirect URI', set: !!process.env.REACT_APP_OAUTH_REDIRECT_URI, required: isOAuth },
-  ];
-
-  const missingRequired = requiredEnvVars.filter(v => v.required && !v.set);
-  const allSet = missingRequired.length === 0;
-
-  return {
-    envVars: requiredEnvVars,
-    allSet,
-    missingCount: missingRequired.length
-  };
-};
-
