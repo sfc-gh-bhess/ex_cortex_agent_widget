@@ -40,6 +40,16 @@ cp env.backend.example .env
 cp env.frontend.example .env.local
 ```
 
+> **Streamlined alternatives:** If you already know which auth mode you need, use one of the mode-specific templates instead — they contain only the variables for that mode:
+>
+> | Mode | Backend | Frontend |
+> |------|---------|----------|
+> | SSO (OAuth) | `cp env.backend.sso .env` | `cp env.frontend.sso .env.local` |
+> | Hybrid — Session Variable | `cp env.backend.var .env` | `cp env.frontend.var .env.local` |
+> | Hybrid — Role-Based | `cp env.backend.role .env` | `cp env.frontend.role .env.local` |
+>
+> The `env.backend.example` / `env.frontend.example` files document all options across all modes.
+
 **Backend** (`.env`) — Snowflake connection, auth mode, and credentials:
 
 ```bash
@@ -111,8 +121,14 @@ For Hybrid mode, the frontend always uses `VITE_AUTH_MODE=OAUTH`. Additional bac
 
 ```
 sample-app/
-├── env.backend.example      Backend configuration template
-├── env.frontend.example     Frontend configuration template
+├── env.backend.example      Backend configuration template (all modes)
+├── env.backend.sso          Backend template — SSO (OAuth) mode
+├── env.backend.var          Backend template — Hybrid Session Variable mode
+├── env.backend.role         Backend template — Hybrid Role mode
+├── env.frontend.example     Frontend configuration template (all modes)
+├── env.frontend.sso         Frontend template — SSO (OAuth) mode
+├── env.frontend.var         Frontend template — Hybrid Session Variable mode
+├── env.frontend.role        Frontend template — Hybrid Role mode
 ├── .env                     Backend config (gitignored)
 ├── .env.local               Frontend config (gitignored)
 ├── package.json

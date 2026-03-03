@@ -74,13 +74,16 @@ The sample backend supports three authentication modes, selected via the `AUTH_M
 |------|---------------|-----------|----------|
 | **PAT** | Shared Personal Access Token | None (open access) | Prototypes, demos, internal tools |
 | **OAUTH** | Per-user token from IdP | OAuth / OIDC login | Production apps with per-user Snowflake access |
-| **HYBRID** | Shared service PAT | OAuth / OIDC login | Multi-tenant apps with row-level data filtering |
+| **HYBRID** | Shared service PAT | OAuth / OIDC login | Multi-tenant apps with per-tenant data isolation |
 
 **PAT** — All API calls use a single Snowflake PAT stored on the server. No login page.
 
 **OAuth** — Users authenticate with an external Identity Provider (Okta, Auth0, etc.). Each user gets their own Snowflake session.
 
-**Hybrid** — Users authenticate via an IdP, but Snowflake API calls use a shared service PAT. The backend validates the IdP JWT, extracts a configured claim (e.g., `tenant`), and passes it to the Cortex Agent as a session variable for row-level data filtering.
+**Hybrid** — Users authenticate via an IdP, but Snowflake API calls use a shared service PAT. The backend validates the IdP JWT and extracts a configured claim (e.g., `tenant`). Tenant data isolation is controlled by `TENANT_ISOLATION_MODE`:
+
+- **SESSION_VAR** (default) — The tenant value is passed to the Cortex Agent as a session variable, used with Snowflake Row Access Policies for row-level data filtering.
+- **ROLE** — The tenant value is mapped to a Snowflake role via a lookup table (`TENANT_ROLE_TABLE`) and set via the `X-Snowflake-Role` header on all Snowflake API calls. Data access is controlled by standard Snowflake RBAC grants. New tenants can be onboarded by inserting a row in the mapping table — no server restart required.
 
 > For both OAuth and Hybrid modes, the frontend uses `VITE_AUTH_MODE=OAUTH`. The distinction is entirely on the backend.
 
@@ -113,6 +116,16 @@ cd sample-app
 cp env.backend.example .env
 cp env.frontend.example .env.local
 ```
+
+> **Streamlined alternatives:** If you already know which auth mode you need, use one of the mode-specific templates instead — they contain only the variables for that mode:
+>
+> | Mode | Backend | Frontend |
+> |------|---------|----------|
+> | SSO (OAuth) | `cp env.backend.sso .env` | `cp env.frontend.sso .env.local` |
+> | Hybrid — Session Variable | `cp env.backend.var .env` | `cp env.frontend.var .env.local` |
+> | Hybrid — Role-Based | `cp env.backend.role .env` | `cp env.frontend.role .env.local` |
+>
+> The `env.backend.example` / `env.frontend.example` files document all options across all modes.
 
 Edit `.env` (backend) with your Snowflake connection and auth settings:
 

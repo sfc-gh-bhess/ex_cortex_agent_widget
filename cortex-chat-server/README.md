@@ -97,7 +97,8 @@ The frontend `@cortex-chat/interface` component can now connect to `http://local
 |--------|------|-------------|
 | `originApplication` | `string` | Base `origin_application` value for thread tagging and filtering. Overrides any value sent by the frontend. |
 | `getOriginApplication` | `(req, baseValue) => string` | Transforms `origin_application` per-request (e.g., append username for per-user thread scoping) |
-| `getSessionVariables` | `(req) => object \| null` | Returns session variables to inject into agent requests (see [Hybrid mode](#hybrid-pat--idp-tenant-extraction)) |
+| `getSessionVariables` | `(req) => object \| null` | Returns session variables to inject into agent requests (see [Hybrid mode — Session Variables](#hybrid-session-variables-pat--idp-tenant-extraction)) |
+| `getSnowflakeRole` | `(req) => string \| null` | Returns a Snowflake role name to set via `X-Snowflake-Role` header on all API calls (see [Hybrid mode — Role-Based](#hybrid-role-based-pat--per-tenant-role)) |
 | `onError` | `(error) => void` | Custom error handler callback |
 
 ## Authentication Strategies
@@ -130,9 +131,9 @@ const chatRouter = createChatRouter({
 app.use('/api', authenticate, chatRouter);
 ```
 
-### Hybrid (PAT + IdP Tenant Extraction)
+### Hybrid: Session Variables (PAT + IdP Tenant Extraction)
 
-Users authenticate via an IdP (for app access and tenant identification), but all Snowflake API calls use a shared service PAT. A claim from the IdP JWT — such as `tenant` — is extracted and passed to the Cortex Agent as a **session variable**, enabling row-level data filtering per tenant.
+Users authenticate via an IdP (for app access and tenant identification), but all Snowflake API calls use a shared service PAT. A claim from the IdP JWT — such as `tenant` — is extracted and passed to the Cortex Agent as a **session variable**, enabling row-level data filtering per tenant via Snowflake Row Access Policies.
 
 ```javascript
 const chatRouter = createChatRouter({
@@ -166,6 +167,27 @@ The `getSessionVariables` callback is invoked on every agent message request (`P
 ```
 
 The variable name (e.g., `TENANT`) and the IdP claim key are configurable. See `sample-app/env.backend.example` for the `SESSION_VAR_NAME` and `CLAIM_KEY` environment variables.
+
+### Hybrid: Role-Based (PAT + Per-Tenant Role)
+
+Same IdP login flow as above, but instead of session variables, the tenant claim is mapped to a **Snowflake role** and set via the `X-Snowflake-Role` header. Data access is controlled by standard Snowflake RBAC grants on the role.
+
+```javascript
+const chatRouter = createChatRouter({
+  // ... Snowflake config ...
+  getAuthToken: (req) => process.env.SNOWFLAKE_PAT,
+  getSnowflakeRole: (req) => {
+    // Return the resolved Snowflake role for this tenant
+    return req.tokens?.role || null;
+  }
+});
+
+app.use('/api', authenticate, chatRouter);
+```
+
+The `getSnowflakeRole` callback is invoked on **every** Snowflake API request (agents, threads, etc.) — not just agent messages. If it returns a non-null string, the `X-Snowflake-Role` header is added to the request.
+
+The sample app stores the tenant-to-role mapping in a Snowflake table and caches it in-memory. See `sample-app/.env` for the `TENANT_ISOLATION_MODE`, `TENANT_ROLE_TABLE`, and related environment variables.
 
 ### Custom Authentication
 

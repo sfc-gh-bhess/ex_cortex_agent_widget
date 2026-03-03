@@ -70,6 +70,7 @@ const MAX_AGENT_NAME_LENGTH = 100;
  * @param {string} config.snowflakeSchema - Schema name
  * @param {Function} config.getAuthToken - Function to get auth token from request
  * @param {Function} [config.getSessionVariables] - Optional function returning session variables to inject into agent requests
+ * @param {Function} [config.getSnowflakeRole] - Optional function returning a Snowflake role name to set via X-Snowflake-Role header
  * @param {string} [config.originApplication] - Base origin_application value for thread tagging/filtering
  * @param {Function} [config.getOriginApplication] - Optional callback (req, baseValue) => string to transform origin_application per-request
  * @param {Function} [config.onError] - Optional error handler callback
@@ -87,7 +88,7 @@ function createChatRouter(config) {
     throw new Error('chatServer: getAuthToken must be a function');
   }
   
-  const { snowflakeHost, snowflakeDatabase, snowflakeSchema, getAuthToken, getSessionVariables, originApplication, getOriginApplication, onError } = config;
+  const { snowflakeHost, snowflakeDatabase, snowflakeSchema, getAuthToken, getSessionVariables, getSnowflakeRole, originApplication, getOriginApplication, onError } = config;
   
   // =========================================================================
   // Helper Functions
@@ -101,11 +102,18 @@ function createChatRouter(config) {
     if (!token) {
       throw new Error('No authentication token provided');
     }
-    return {
+    const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'Authorization': `Bearer ${token}`
     };
+    if (typeof getSnowflakeRole === 'function') {
+      const role = getSnowflakeRole(req);
+      if (role) {
+        headers['X-Snowflake-Role'] = role;
+      }
+    }
+    return headers;
   };
   
   /**

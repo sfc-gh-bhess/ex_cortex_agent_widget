@@ -80,8 +80,14 @@ const validateEnvironment = () => {
       'SNOWFLAKE_PAT',
       'OAUTH_TOKEN_URL', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_REDIRECT_URI',
       'IDP_JWKS_URL', 'IDP_ISSUER', 'IDP_AUDIENCE',
-      'SESSION_VAR_NAME', 'CLAIM_KEY'
+      'CLAIM_KEY'
     );
+    const isolationMode = process.env.TENANT_ISOLATION_MODE || 'SESSION_VAR';
+    if (isolationMode === 'ROLE') {
+      required.push('TENANT_ROLE_TABLE', 'SNOWFLAKE_WAREHOUSE');
+    } else {
+      required.push('SESSION_VAR_NAME');
+    }
   } else {
     console.error('❌ Invalid AUTH_MODE. Must be "PAT", "OAUTH", or "HYBRID"');
     process.exit(1);
@@ -114,7 +120,7 @@ const OAUTH_CONFIG = {
   redirectUri: process.env.OAUTH_REDIRECT_URI
 };
 
-// HYBRID mode configuration (IdP JWT validation + session variables)
+// HYBRID mode configuration (IdP JWT validation + tenant isolation)
 const HYBRID_CONFIG = AUTH_MODE === 'HYBRID' ? {
   jwksUrl: process.env.IDP_JWKS_URL,
   issuer: process.env.IDP_ISSUER,
@@ -122,6 +128,9 @@ const HYBRID_CONFIG = AUTH_MODE === 'HYBRID' ? {
   sessionVarName: process.env.SESSION_VAR_NAME,
   claimKey: process.env.CLAIM_KEY,
   usernameClaim: process.env.USERNAME_CLAIM_KEY || 'email',
+  isolationMode: process.env.TENANT_ISOLATION_MODE || 'SESSION_VAR',
+  roleTable: process.env.TENANT_ROLE_TABLE || null,
+  roleCacheTtl: parseInt(process.env.TENANT_ROLE_CACHE_TTL_SECS || '300', 10),
 } : null;
 
 // JWKS key set for HYBRID mode JWT validation (caches keys automatically)
@@ -151,8 +160,9 @@ const generateSessionId = () => {
  * Store tokens for a session
  * @param {string} tenant - Tenant identifier extracted from IdP claims (HYBRID mode only)
  * @param {string} username - User identity extracted from IdP claims (HYBRID mode only)
+ * @param {string} role - Resolved Snowflake role for the tenant (HYBRID ROLE isolation mode only)
  */
-const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = 'unknown', tenant = null, username = null) => {
+const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = 'unknown', tenant = null, username = null, role = null) => {
   const expiresAt = Date.now() + (expiresIn * 1000);
   
   tokenStore.set(sessionId, {
@@ -161,10 +171,11 @@ const storeTokens = (sessionId, accessToken, refreshToken, expiresIn, userId = '
     expiresAt,
     userId,
     tenant,
-    username
+    username,
+    role
   });
   
-  const extras = [tenant && `tenant: ${tenant}`, username && `username: ${username}`].filter(Boolean).join(', ');
+  const extras = [tenant && `tenant: ${tenant}`, username && `username: ${username}`, role && `role: ${role}`].filter(Boolean).join(', ');
   console.log(`🔐 Stored tokens for session: ${sessionId.substring(0, 8)}... (expires in ${expiresIn}s${extras ? `, ${extras}` : ''})`);
 };
 
@@ -359,6 +370,7 @@ const refreshTokenIfNeeded = async (req, res, next) => {
       // In HYBRID mode, re-validate JWT and extract tenant/username from refreshed tokens
       let tenant = tokens.tenant;
       let username = tokens.username;
+      let role = tokens.role;
       if (AUTH_MODE === 'HYBRID') {
         const tokensToTry = [data.id_token, data.access_token].filter(Boolean);
         const issuerVariants = [
@@ -391,6 +403,10 @@ const refreshTokenIfNeeded = async (req, res, next) => {
           }
           if (found) break;
         }
+
+        if (HYBRID_CONFIG.isolationMode === 'ROLE' && tenantRoleCache && tenant) {
+          role = await tenantRoleCache.resolve(tenant) || role;
+        }
       }
       
       storeTokens(
@@ -400,7 +416,8 @@ const refreshTokenIfNeeded = async (req, res, next) => {
         data.expires_in,
         tokens.userId,
         tenant,
-        username
+        username,
+        role
       );
       
       req.tokens = getTokens(sessionId);
@@ -433,7 +450,7 @@ const chatRouter = createChatRouter({
     }
     return req.tokens?.accessToken;
   },
-  getSessionVariables: AUTH_MODE === 'HYBRID' ? (req) => {
+  getSessionVariables: (AUTH_MODE === 'HYBRID' && HYBRID_CONFIG?.isolationMode === 'SESSION_VAR') ? (req) => {
     const sessionId = req.cookies?.session_id;
     const tokens = sessionId ? getTokens(sessionId) : null;
     if (tokens?.tenant) {
@@ -445,6 +462,15 @@ const chatRouter = createChatRouter({
           is_session_variable: true
         }
       };
+    }
+    return null;
+  } : undefined,
+  getSnowflakeRole: (AUTH_MODE === 'HYBRID' && HYBRID_CONFIG?.isolationMode === 'ROLE') ? (req) => {
+    const sessionId = req.cookies?.session_id;
+    const tokens = sessionId ? getTokens(sessionId) : null;
+    if (tokens?.role) {
+      console.log(`🔑 Setting X-Snowflake-Role: ${tokens.role}`);
+      return tokens.role;
     }
     return null;
   } : undefined,
@@ -573,6 +599,20 @@ if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
           });
         }
       }
+
+      // In HYBRID ROLE mode, resolve the tenant claim to a Snowflake role
+      let role = null;
+      if (AUTH_MODE === 'HYBRID' && HYBRID_CONFIG.isolationMode === 'ROLE' && tenantRoleCache) {
+        role = await tenantRoleCache.resolve(tenant);
+        if (!role) {
+          console.error(`❌ No Snowflake role mapping found for tenant '${tenant}' in ${HYBRID_CONFIG.roleTable}`);
+          return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+            error: 'Tenant role mapping failed',
+            message: `No Snowflake role found for tenant '${tenant}'`
+          });
+        }
+        console.log(`✅ Resolved tenant '${tenant}' -> role '${role}'`);
+      }
       
       const sessionId = generateSessionId();
       
@@ -583,7 +623,8 @@ if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
         tokenData.expires_in,
         tokenData.user_id || 'unknown',
         tenant,
-        username
+        username,
+        role
       );
       
       const cookieOptions = {
@@ -668,6 +709,106 @@ if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
 }
 
 // ============================================================================
+// Tenant Role Cache (HYBRID ROLE isolation mode)
+// ============================================================================
+
+/**
+ * Loads and caches the tenant-to-Snowflake-role mapping from a Snowflake table
+ * via the SQL API. Used when TENANT_ISOLATION_MODE=ROLE.
+ *
+ * - Eagerly loaded on server startup (fail-fast if misconfigured)
+ * - Periodically refreshed based on a configurable TTL
+ * - On cache miss, immediately re-fetches before rejecting
+ */
+class TenantRoleCache {
+  constructor({ snowflakeHost, pat, tableName, warehouse, role, ttlSecs = 300 }) {
+    this.snowflakeHost = snowflakeHost;
+    this.pat = pat;
+    this.tableName = tableName;
+    this.warehouse = warehouse;
+    this.role = role;
+    this.ttlSecs = ttlSecs;
+    this.cache = new Map();
+    this.lastRefresh = 0;
+    this.refreshPromise = null;
+  }
+
+  async load() {
+    const sql = `SELECT tenant_key, tenant_role FROM ${this.tableName} ORDER BY tenant_key, tenant_role`;
+    const body = {
+      statement: sql,
+      timeout: 30,
+      warehouse: this.warehouse,
+    };
+    if (this.role) {
+      body.role = this.role;
+    }
+    const resp = await fetch(
+      `https://${this.snowflakeHost}/api/v2/statements`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${this.pat}`,
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Failed to load tenant role table: ${resp.status} ${text}`);
+    }
+    const data = await resp.json();
+    const newCache = new Map();
+    for (const row of data.data || []) {
+      const [tenantKey, tenantRole] = row;
+      if (newCache.has(tenantKey)) {
+        console.warn(
+          `⚠️  Duplicate tenant_key '${tenantKey}' in ${this.tableName}: ` +
+          `using '${newCache.get(tenantKey)}', ignoring '${tenantRole}'`
+        );
+        continue;
+      }
+      newCache.set(tenantKey, tenantRole);
+    }
+    this.cache = newCache;
+    this.lastRefresh = Date.now();
+    console.log(`📋 Loaded ${newCache.size} tenant-role mappings from ${this.tableName}`);
+  }
+
+  async refreshIfStale() {
+    if (this.ttlSecs <= 0) return;
+    if (Date.now() - this.lastRefresh < this.ttlSecs * 1000) return;
+    if (!this.refreshPromise) {
+      this.refreshPromise = this.load()
+        .catch(err => console.error('❌ Tenant role cache refresh failed:', err.message))
+        .finally(() => { this.refreshPromise = null; });
+    }
+    return this.refreshPromise;
+  }
+
+  async resolve(tenantKey) {
+    await this.refreshIfStale();
+    if (this.cache.has(tenantKey)) return this.cache.get(tenantKey);
+    await this.load();
+    return this.cache.get(tenantKey) || null;
+  }
+}
+
+let tenantRoleCache = null;
+if (AUTH_MODE === 'HYBRID' && HYBRID_CONFIG.isolationMode === 'ROLE') {
+  tenantRoleCache = new TenantRoleCache({
+    snowflakeHost: SNOWFLAKE_CONFIG.host,
+    pat: process.env.SNOWFLAKE_PAT,
+    tableName: HYBRID_CONFIG.roleTable,
+    warehouse: process.env.SNOWFLAKE_WAREHOUSE,
+    role: process.env.SNOWFLAKE_ROLE || null,
+    ttlSecs: HYBRID_CONFIG.roleCacheTtl,
+  });
+}
+
+// ============================================================================
 // Error Handling
 // ============================================================================
 
@@ -693,37 +834,55 @@ app.use((err, req, res, next) => {
 // Server Startup
 // ============================================================================
 
-app.listen(PORT, () => {
-  console.log('\n🚀 Secure Snowflake Proxy Server Started');
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`📍 Server running on: http://localhost:${PORT}`);
-  console.log(`🔒 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🏔️  Snowflake Host: ${SNOWFLAKE_CONFIG.host}`);
-  console.log(`📊 Database: ${SNOWFLAKE_CONFIG.database}`);
-  console.log(`📁 Schema: ${SNOWFLAKE_CONFIG.schema}`);
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-  if (AUTH_MODE === 'HYBRID') {
-    console.log(`🔑 HYBRID: IdP JWKS: ${HYBRID_CONFIG.jwksUrl}`);
-    console.log(`🔑 HYBRID: Session var: ${HYBRID_CONFIG.sessionVarName} (from claim: ${HYBRID_CONFIG.claimKey})`);
+(async () => {
+  // Eagerly load tenant role cache before accepting requests
+  if (tenantRoleCache) {
+    try {
+      await tenantRoleCache.load();
+    } catch (err) {
+      console.error('❌ Failed to load tenant role cache on startup:', err.message);
+      process.exit(1);
+    }
   }
-  console.log('✨ Chat server integrated at /api/*');
-  console.log('Available endpoints:');
-  console.log('  GET  /health                          - Health check');
-  if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
-    console.log('  POST /auth/exchange                   - OAuth token exchange');
-    console.log('  POST /auth/logout                     - Logout');
-    console.log('  GET  /auth/status                     - Auth status');
-  }
-  console.log('  GET  /api/agents                      - List all agents');
-  console.log('  GET  /api/agents/:agentName           - Get agent details');
-  console.log('  POST /api/agents/:agentName/messages  - Send message to agent');
-  console.log('  POST /api/threads                     - Create thread');
-  console.log('  GET  /api/threads                     - List threads');
-  console.log('  GET  /api/threads/:id                 - Get thread history');
-  console.log('  POST /api/threads/:id                 - Update thread name');
-  console.log('  DELETE /api/threads/:id               - Delete thread');
-  console.log('\n✨ Ready to accept requests!\n');
-});
+
+  app.listen(PORT, () => {
+    console.log('\n🚀 Secure Snowflake Proxy Server Started');
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`📍 Server running on: http://localhost:${PORT}`);
+    console.log(`🔒 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🏔️  Snowflake Host: ${SNOWFLAKE_CONFIG.host}`);
+    console.log(`📊 Database: ${SNOWFLAKE_CONFIG.database}`);
+    console.log(`📁 Schema: ${SNOWFLAKE_CONFIG.schema}`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+    if (AUTH_MODE === 'HYBRID') {
+      console.log(`🔑 HYBRID: IdP JWKS: ${HYBRID_CONFIG.jwksUrl}`);
+      console.log(`🔑 HYBRID: Isolation mode: ${HYBRID_CONFIG.isolationMode}`);
+      if (HYBRID_CONFIG.isolationMode === 'SESSION_VAR') {
+        console.log(`🔑 HYBRID: Session var: ${HYBRID_CONFIG.sessionVarName} (from claim: ${HYBRID_CONFIG.claimKey})`);
+      } else if (HYBRID_CONFIG.isolationMode === 'ROLE') {
+        console.log(`🔑 HYBRID: Role table: ${HYBRID_CONFIG.roleTable} (claim: ${HYBRID_CONFIG.claimKey})`);
+        console.log(`🔑 HYBRID: Cache TTL: ${HYBRID_CONFIG.roleCacheTtl}s, mappings loaded: ${tenantRoleCache?.cache.size || 0}`);
+      }
+    }
+    console.log('✨ Chat server integrated at /api/*');
+    console.log('Available endpoints:');
+    console.log('  GET  /health                          - Health check');
+    if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
+      console.log('  POST /auth/exchange                   - OAuth token exchange');
+      console.log('  POST /auth/logout                     - Logout');
+      console.log('  GET  /auth/status                     - Auth status');
+    }
+    console.log('  GET  /api/agents                      - List all agents');
+    console.log('  GET  /api/agents/:agentName           - Get agent details');
+    console.log('  POST /api/agents/:agentName/messages  - Send message to agent');
+    console.log('  POST /api/threads                     - Create thread');
+    console.log('  GET  /api/threads                     - List threads');
+    console.log('  GET  /api/threads/:id                 - Get thread history');
+    console.log('  POST /api/threads/:id                 - Update thread name');
+    console.log('  DELETE /api/threads/:id               - Delete thread');
+    console.log('\n✨ Ready to accept requests!\n');
+  });
+})();
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
