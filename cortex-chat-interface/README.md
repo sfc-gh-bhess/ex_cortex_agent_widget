@@ -250,7 +250,3 @@ import type { ChatMessage, AgentConfig, ChatConfig, DisplayConfig, ChartContent 
 // Theme
 import { createAppTheme } from '@cortex-chat/interface';
 ```
-
-## License
-
-MIT

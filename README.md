@@ -231,7 +231,3 @@ See [cortex-chat-server/README.md](cortex-chat-server/README.md) for auth strate
 | [sample-app/README.md](sample-app/README.md) | How to configure and run the sample application |
 | [Snowflake Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) | Agent configuration in Snowflake |
 | [Cortex Agents REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api) | API reference |
-
-## License
-
-MIT
