@@ -127,6 +127,8 @@ cp env.frontend.example .env.local
 >
 > The `env.backend.example` / `env.frontend.example` files document all options across all modes.
 
+> **Identity Provider setup:** If using OAuth or Hybrid mode, configure your IdP before starting the app. See the [Identity Provider Configuration](sample-app/README.md#identity-provider-configuration) guide in the sample-app README.
+
 Edit `.env` (backend) with your Snowflake connection and auth settings:
 
 ```bash

@@ -108,6 +108,103 @@ Open [http://localhost:3000](http://localhost:3000).
 
 For Hybrid mode, the frontend always uses `VITE_AUTH_MODE=OAUTH`. Additional backend variables are required — see `env.backend.example`.
 
+## Identity Provider Configuration
+
+Both OAuth and Hybrid modes require an external Identity Provider (IdP) such as Okta, Auth0, or any OIDC-compliant provider. PAT mode does not use an IdP.
+
+### Common Setup (All OAuth/Hybrid Modes)
+
+Register an application in your IdP with the following settings:
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| **Application type** | Web Application (confidential client) | The backend exchanges tokens using `client_secret` via HTTP Basic Auth. A public/SPA client will not work. |
+| **Grant types** | Authorization Code, Refresh Token | Refresh Token is recommended for automatic token renewal. |
+| **Redirect URI** | `http://localhost:3000/auth/callback` | Must match `OAUTH_REDIRECT_URI` (backend) and `VITE_OAUTH_REDIRECT_URI` (frontend). Use your production URL in deployed environments. |
+
+After creating the application, note the following values for your `.env` and `.env.local` files:
+
+| IdP Value | Backend Variable | Frontend Variable |
+|-----------|-----------------|-------------------|
+| Token endpoint URL | `OAUTH_TOKEN_URL` | — |
+| Client ID | `OAUTH_CLIENT_ID` | `VITE_OAUTH_CLIENT_ID` |
+| Client Secret | `OAUTH_CLIENT_SECRET` | — (never exposed to browser) |
+| Authorization endpoint | — | `VITE_OAUTH_LOGIN_URL` |
+
+### OAuth Mode
+
+In OAuth mode, the IdP issues tokens that Snowflake accepts directly via [External OAuth](https://docs.snowflake.com/en/user-guide/oauth-ext-overview). This requires configuration on both the IdP and Snowflake sides.
+
+**IdP-side:**
+
+- **Scope** — Define a scope named `session:role-any` on your authorization server. This is a Snowflake-specific scope that allows the token to assume any role granted to the user. Set `VITE_OAUTH_SCOPE=session:role-any` on the frontend.
+- **Custom claims** — None required. Snowflake validates the token directly.
+
+> *Okta:* Create an Authorization Server and add `session:role-any` as a custom scope.
+> *Auth0:* Register a Custom API and add `session:role-any` as a permitted scope.
+
+**Snowflake-side:**
+
+Create an [External OAuth Security Integration](https://docs.snowflake.com/en/sql-reference/sql/create-security-integration-oauth-external) in Snowflake that trusts your IdP:
+
+```sql
+CREATE SECURITY INTEGRATION my_external_oauth
+  TYPE = EXTERNAL_OAUTH
+  ENABLED = TRUE
+  EXTERNAL_OAUTH_TYPE = <OKTA | CUSTOM | ...>
+  EXTERNAL_OAUTH_ISSUER = '<your IdP issuer URL>'
+  EXTERNAL_OAUTH_JWS_KEYS_URL = '<your IdP JWKS URL>'
+  EXTERNAL_OAUTH_TOKEN_USER_MAPPING_CLAIM = 'sub'
+  EXTERNAL_OAUTH_SNOWFLAKE_USER_MAPPING_ATTRIBUTE = 'login_name'
+  EXTERNAL_OAUTH_ANY_ROLE_MODE = 'ENABLE';
+```
+
+Refer to the [Snowflake External OAuth documentation](https://docs.snowflake.com/en/user-guide/oauth-ext-overview) for the full set of options and IdP-specific guides.
+
+### Hybrid Mode
+
+In Hybrid mode, the IdP is used **only for application authentication and tenant identification** — it is not integrated with Snowflake. The backend validates the IdP JWT itself and extracts claims. No Snowflake External OAuth integration is needed.
+
+**Scope:**
+
+Set `VITE_OAUTH_SCOPE=openid profile email` on the frontend. The `openid` scope is required so the IdP returns an `id_token` — a signed JWT that the backend validates to extract tenant and user information.
+
+**Custom claim — tenant identifier:**
+
+Add a custom claim to the `id_token` (or `access_token`) that identifies the tenant for each user. The claim name must match `CLAIM_KEY` in the backend config (default: `tenant`).
+
+| IdP | How to add a custom claim |
+|-----|--------------------------|
+| Okta | Security > API > Authorization Servers > Claims > Add Claim |
+| Auth0 | Actions > Flows > Login > Add Action that sets `api.idToken.setCustomClaim('tenant', ...)` |
+
+The claim value should match the tenant identifiers used in your data isolation strategy — for example, the `tenant_key` values in your `TENANT_ROLES` table (Role mode) or the values your Row Access Policy checks (Session Variable mode).
+
+**User identifier claim:**
+
+The JWT must contain a claim that uniquely identifies the user. By default, the backend uses `email`. This value is hashed and appended to `ORIGIN_APPLICATION` to scope conversation threads per-user. To use a different claim, set `USERNAME_CLAIM_KEY` in the backend config.
+
+**Token format:**
+
+At least one of the `id_token` or `access_token` must be a JWT containing the tenant claim. The backend tries both tokens during validation. Most IdPs return a JWT `id_token` when the `openid` scope is requested.
+
+> *Auth0 note:* By default, Auth0 returns an opaque `access_token`. To receive a JWT `access_token`, set the API Audience (`VITE_OAUTH_AUDIENCE` on the frontend, `IDP_AUDIENCE` on the backend). The `id_token` is always a JWT and is usually sufficient.
+
+**JWKS, Issuer, and Audience:**
+
+| Backend Variable | Value | Notes |
+|-----------------|-------|-------|
+| `IDP_JWKS_URL` | Your IdP's JWKS endpoint | Typically `https://your-idp.example.com/.well-known/jwks.json`. Used to verify JWT signatures. |
+| `IDP_ISSUER` | Your IdP's issuer URL | Must match the `iss` claim in the JWT. The backend tries both with and without a trailing slash. |
+| `IDP_AUDIENCE` | Expected `aud` claim value | The backend also tries `OAUTH_CLIENT_ID` as a fallback (some IdPs set `aud` to the client ID in the `id_token`). |
+
+**SESSION_VAR vs ROLE — IdP configuration is the same:**
+
+Both Hybrid isolation modes use the same IdP setup described above. The difference is entirely on the backend and Snowflake side:
+
+- **SESSION_VAR** — The tenant claim value is passed as a session variable to the Cortex Agent for use with Snowflake Row Access Policies. See `env.backend.var`.
+- **ROLE** — The tenant claim value is mapped to a Snowflake role via a lookup table and set via the `X-Snowflake-Role` header. See `env.backend.role`.
+
 ## npm Scripts
 
 | Command | Description |
