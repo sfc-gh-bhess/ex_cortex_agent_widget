@@ -79,7 +79,7 @@ const validateEnvironment = () => {
     required.push(
       'SNOWFLAKE_PAT',
       'OAUTH_TOKEN_URL', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_REDIRECT_URI',
-      'IDP_JWKS_URL', 'IDP_ISSUER', 'IDP_AUDIENCE',
+      'IDP_JWKS_URL', 'IDP_ISSUER',
       'CLAIM_KEY'
     );
     const isolationMode = process.env.TENANT_ISOLATION_MODE || 'SESSION_VAR';
@@ -124,7 +124,7 @@ const OAUTH_CONFIG = {
 const HYBRID_CONFIG = AUTH_MODE === 'HYBRID' ? {
   jwksUrl: process.env.IDP_JWKS_URL,
   issuer: process.env.IDP_ISSUER,
-  audience: process.env.IDP_AUDIENCE,
+  audience: process.env.IDP_AUDIENCE || null,
   sessionVarName: process.env.SESSION_VAR_NAME,
   claimKey: process.env.CLAIM_KEY,
   usernameClaim: process.env.USERNAME_CLAIM_KEY || 'email',
@@ -377,8 +377,9 @@ const refreshTokenIfNeeded = async (req, res, next) => {
           HYBRID_CONFIG.issuer,
           HYBRID_CONFIG.issuer.endsWith('/') ? HYBRID_CONFIG.issuer.slice(0, -1) : HYBRID_CONFIG.issuer + '/',
         ];
-        const audienceVariants = [HYBRID_CONFIG.audience];
-        if (OAUTH_CONFIG.clientId && OAUTH_CONFIG.clientId !== HYBRID_CONFIG.audience) {
+        const audienceVariants = [];
+        if (HYBRID_CONFIG.audience) audienceVariants.push(HYBRID_CONFIG.audience);
+        if (OAUTH_CONFIG.clientId && !audienceVariants.includes(OAUTH_CONFIG.clientId)) {
           audienceVariants.push(OAUTH_CONFIG.clientId);
         }
         for (const jwt of tokensToTry) {
@@ -564,8 +565,9 @@ if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
           HYBRID_CONFIG.issuer.endsWith('/') ? HYBRID_CONFIG.issuer.slice(0, -1) : HYBRID_CONFIG.issuer + '/',
         ];
 
-        const audienceVariants = [HYBRID_CONFIG.audience];
-        if (OAUTH_CONFIG.clientId && OAUTH_CONFIG.clientId !== HYBRID_CONFIG.audience) {
+        const audienceVariants = [];
+        if (HYBRID_CONFIG.audience) audienceVariants.push(HYBRID_CONFIG.audience);
+        if (OAUTH_CONFIG.clientId && !audienceVariants.includes(OAUTH_CONFIG.clientId)) {
           audienceVariants.push(OAUTH_CONFIG.clientId);
         }
         
@@ -592,7 +594,7 @@ if (AUTH_MODE === 'OAUTH' || AUTH_MODE === 'HYBRID') {
         }
         
         if (!validated || !tenant) {
-          console.error(`❌ Could not extract '${HYBRID_CONFIG.claimKey}' claim from IdP tokens. Ensure the claim exists and IDP_ISSUER / IDP_AUDIENCE are correct.`);
+          console.error(`❌ Could not extract '${HYBRID_CONFIG.claimKey}' claim from IdP tokens. Ensure the claim exists and IDP_ISSUER is correct.`);
           return res.status(HTTP_STATUS.UNAUTHORIZED).json({
             error: 'JWT validation failed',
             message: `Could not extract '${HYBRID_CONFIG.claimKey}' claim from IdP tokens`

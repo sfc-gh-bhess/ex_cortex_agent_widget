@@ -188,15 +188,15 @@ The JWT must contain a claim that uniquely identifies the user. By default, the 
 
 At least one of the `id_token` or `access_token` must be a JWT containing the tenant claim. The backend tries both tokens during validation. Most IdPs return a JWT `id_token` when the `openid` scope is requested.
 
-> *Auth0 note:* By default, Auth0 returns an opaque `access_token`. To receive a JWT `access_token`, set the API Audience (`VITE_OAUTH_AUDIENCE` on the frontend, `IDP_AUDIENCE` on the backend). The `id_token` is always a JWT and is usually sufficient.
+> *Auth0 note:* By default, Auth0 returns an opaque `access_token`. The `id_token` is always a JWT and is usually sufficient for Hybrid mode. To also receive a JWT `access_token`, set `VITE_OAUTH_AUDIENCE` on the frontend.
 
-**JWKS, Issuer, and Audience:**
+**JWKS and Issuer:**
 
 | Backend Variable | Value | Notes |
 |-----------------|-------|-------|
 | `IDP_JWKS_URL` | Your IdP's JWKS endpoint | Typically `https://your-idp.example.com/.well-known/jwks.json`. Used to verify JWT signatures. |
 | `IDP_ISSUER` | Your IdP's issuer URL | Must match the `iss` claim in the JWT. The backend tries both with and without a trailing slash. |
-| `IDP_AUDIENCE` | Expected `aud` claim value | The backend also tries `OAUTH_CLIENT_ID` as a fallback (some IdPs set `aud` to the client ID in the `id_token`). |
+| `IDP_AUDIENCE` | Expected `aud` claim value (optional) | If not set, `OAUTH_CLIENT_ID` is used — which matches the `id_token`'s `aud` for all OIDC-compliant IdPs. Only set this if your IdP uses a different audience value. |
 
 **SESSION_VAR vs ROLE — IdP configuration is the same:**
 
@@ -258,7 +258,7 @@ sample-app/
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | Cannot connect to backend | Backend not running | Run `npm run start:server` and check `VITE_BACKEND_URL` |
-| HTTP 401 Unauthorized | Invalid or expired token | **PAT:** Check `SNOWFLAKE_PAT`. **OAuth:** Verify IdP config and token exchange. **Hybrid:** Check `IDP_ISSUER`, `IDP_AUDIENCE`, `CLAIM_KEY` |
+| HTTP 401 Unauthorized | Invalid or expired token | **PAT:** Check `SNOWFLAKE_PAT`. **OAuth:** Verify IdP config and token exchange. **Hybrid:** Check `IDP_ISSUER`, `OAUTH_CLIENT_ID`, `CLAIM_KEY` |
 | HTTP 404 Agent Not Found | Agent doesn't exist in specified database/schema | Verify `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`, and agent name (case-sensitive) |
 | OAuth login loops silently | IdP session persists after app logout | Set `VITE_OAUTH_PROMPT=login` in `.env.local` to force re-authentication |
 | Port already in use | Previous process still running | `lsof -ti:3000 \| xargs kill -9` or `lsof -ti:3001 \| xargs kill -9` |

@@ -127,7 +127,7 @@ cp env.frontend.example .env.local
 >
 > The `env.backend.example` / `env.frontend.example` files document all options across all modes.
 
-> **Identity Provider setup:** If using OAuth or Hybrid mode, configure your IdP before starting the app. See the [Identity Provider Configuration](sample-app/README.md#identity-provider-configuration) guide in the sample-app README.
+> **Identity Provider setup:** If using OAuth or Hybrid mode, configure your IdP before starting the app. See the [Identity Provider Configuration](sample-app/README.md#identity-provider-configuration) guide in the sample-app README. For a step-by-step walkthrough using Auth0 (free tier), see [Auth0.md](Auth0.md).
 
 Edit `.env` (backend) with your Snowflake connection and auth settings:
 
@@ -231,5 +231,6 @@ See [cortex-chat-server/README.md](cortex-chat-server/README.md) for auth strate
 | [cortex-chat-interface/README.md](cortex-chat-interface/README.md) | Component API, props reference, embedding guide |
 | [cortex-chat-server/README.md](cortex-chat-server/README.md) | Server integration, auth strategies, endpoints |
 | [sample-app/README.md](sample-app/README.md) | How to configure and run the sample application |
+| [Auth0.md](Auth0.md) | Step-by-step Auth0 setup for Hybrid mode (free tier) |
 | [Snowflake Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) | Agent configuration in Snowflake |
 | [Cortex Agents REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-rest-api) | API reference |
