@@ -460,7 +460,8 @@ const chatRouter = createChatRouter({
         [HYBRID_CONFIG.sessionVarName]: {
           value: tokens.tenant,
           type: 'string',
-          is_session_variable: true
+          // is_session_variable: true,
+          is_immutable_session_attribute: true
         }
       };
     }
