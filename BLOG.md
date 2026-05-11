@@ -168,18 +168,18 @@ The Notebook covers three modes of data isolation:
 
 - **3a: OAUTH (SSO)** — Users authenticate directly with Snowflake. The Row Access Policy checks `CURRENT_USER()`.
 - **3b: HYBRID-ROLE** — The app maps each tenant to a Snowflake role. The RAP checks `CURRENT_ROLE()`.
-- **3c: HYBRID-SESSION** — The app passes a session variable. The RAP checks `GETVARIABLE('TENANT')`.
+- **3c: HYBRID-SESSION** — The app passes a session variable. The RAP checks `SYS_CONTEXT('SNOWFLAKE$SESSION_ATTRIBUTES', 'TENANT')`.
 
 You can choose whichever mode fits your use case. For the rest of this walkthrough, we'll focus on **HYBRID-SESSION** (mode 3c) since it's the most common pattern for SaaS-style multi-tenant applications and doesn't require creating Snowflake users or roles per tenant.
 
 In the Session Variable approach, the Notebook creates:
 
 - An **entitlement table** (`ENTITLEMENT_VAR`) that maps tenant keys (like `Alice`) to tenant names (like `Alices Restaurant`).
-- A **Row Access Policy** (`RAP_ENTITLEMENT_VAR`) on the entitlement table that filters rows based on the value of `GETVARIABLE('TENANT')`.
+- A **Row Access Policy** (`RAP_ENTITLEMENT_VAR`) on the entitlement table that filters rows based on the value of `SYS_CONTEXT('SNOWFLAKE$SESSION_ATTRIBUTES', 'TENANT')`.
 - A **memoizable UDF** (`TENANTS_VAR()`) that builds an array of allowed tenant names.
 - A **Row Access Policy** (`RAP_TENANT_VAR`) applied to the `ORDERS` and `ITEMS` tables, so that queries only return rows for tenants the current session is authorized to see.
 
-The beauty of this approach is that when the backend sends a request to the Cortex Agent with a session variable like `TENANT = 'Alice'`, Snowflake's Row Access Policies automatically filter the data — the agent only ever "sees" Alice's Restaurant data, no matter what SQL it generates.
+The beauty of this approach is that when the backend sends a request to the Cortex Agent with a session variable like `SET_SYS_CONTEXT('SNOWFLAKE$SESSION_ATTRIBUTES', 'TENANT', 'Alice')`, Snowflake's Row Access Policies automatically filter the data — the agent only ever "sees" Alice's Restaurant data, no matter what SQL it generates.
 
 ## Configuring the Identity Provider
 
