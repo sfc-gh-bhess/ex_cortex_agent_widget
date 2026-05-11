@@ -9,6 +9,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { FloatingChatInterface, ChatThemeProvider } from '@cortex-chat/interface';
 import { Box, Typography, CircularProgress, Container } from '@mui/material';
 import { ChatHeader } from './components/chat/ChatHeader';
+import { SalesByStoreChart } from './components/SalesByStoreChart';
 import { ThemeContextProvider, useThemeContext } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
@@ -206,9 +207,10 @@ const MainAppContent: React.FC = () => {
           <Typography variant="h4" gutterBottom>
             Welcome to Custom Cortex Agents
           </Typography>
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
             Click the chat button in the bottom right corner to start a conversation with our AI assistant.
           </Typography>
+          <SalesByStoreChart />
         </Box>
 
         {/* Floating chat overlay */}

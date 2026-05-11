@@ -72,7 +72,7 @@ const validateEnvironment = () => {
 
   // Add mode-specific requirements
   if (AUTH_MODE === 'PAT') {
-    required.push('SNOWFLAKE_PAT');
+    required.push('SNOWFLAKE_PAT', 'SNOWFLAKE_WAREHOUSE');
   } else if (AUTH_MODE === 'OAUTH') {
     required.push('OAUTH_TOKEN_URL', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_REDIRECT_URI');
   } else if (AUTH_MODE === 'HYBRID') {
@@ -80,11 +80,12 @@ const validateEnvironment = () => {
       'SNOWFLAKE_PAT',
       'OAUTH_TOKEN_URL', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_REDIRECT_URI',
       'IDP_JWKS_URL', 'IDP_ISSUER',
-      'CLAIM_KEY'
+      'CLAIM_KEY',
+      'SNOWFLAKE_WAREHOUSE'
     );
     const isolationMode = process.env.TENANT_ISOLATION_MODE || 'SESSION_VAR';
     if (isolationMode === 'ROLE') {
-      required.push('TENANT_ROLE_TABLE', 'SNOWFLAKE_WAREHOUSE');
+      required.push('TENANT_ROLE_TABLE');
     } else {
       required.push('SESSION_VAR_NAME');
     }
@@ -280,6 +281,90 @@ const sanitizeError = (error) => {
     code: error.code || 'UNKNOWN_ERROR'
   };
 };
+
+/** Single-quoted Snowflake string literal (tenant, dates, etc.). */
+const sqlStringLiteral = (value) => `'${String(value).replace(/'/g, "''")}'`;
+
+/** Double-quoted Snowflake identifier. */
+const quoteIdent = (name) => `"${String(name).replace(/"/g, '""')}"`;
+
+/** Only allow YYYY-MM-DD calendar dates (safe to inline in SQL after validation). */
+const parseIsoDateStrict = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [y, m, d] = value.split('-').map((x) => parseInt(x, 10));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (
+    Number.isNaN(dt.getTime()) ||
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() !== m - 1 ||
+    dt.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  return value;
+};
+
+/**
+ * Token for Snowflake SQL API — same rules as the Cortex chat proxy (getAuthToken).
+ */
+const getSnowflakeAuthToken = (req) => {
+  if (req.authMode === 'PAT' || req.authMode === 'HYBRID') {
+    return process.env.SNOWFLAKE_PAT;
+  }
+  return req.tokens?.accessToken;
+};
+
+/** PAT/HYBRID: warehouse required in env. OAUTH: optional (omit to use Snowflake default). */
+const getWarehouseForSqlApi = () => {
+  const w = process.env.SNOWFLAKE_WAREHOUSE;
+  if (AUTH_MODE === 'OAUTH') {
+    return w || undefined;
+  }
+  return w;
+};
+
+/**
+ * One statement for all modes: inline date literals (validated above).
+ * HYBRID + SESSION_VAR: prepend SET_SYS_CONTEXT via Snowflake flow operator (->>).
+ */
+const buildSalesByStoreStatement = (req, startDate, endDate) => {
+  const db = quoteIdent(SNOWFLAKE_CONFIG.database);
+  const sc = quoteIdent(SNOWFLAKE_CONFIG.schema);
+  const startLit = sqlStringLiteral(startDate);
+  const endLit = sqlStringLiteral(endDate);
+
+  const aggregateSql =
+    `SELECT store_id, SUM(quantity) AS total ` +
+    `FROM ${db}.${sc}.orders ` +
+    `WHERE "DATE" >= ${startLit} AND "DATE" <= ${endLit} ` +
+    `GROUP BY store_id ` +
+    `ORDER BY store_id`;
+
+  let prefix = '';
+  if (AUTH_MODE === 'HYBRID' && HYBRID_CONFIG.isolationMode === 'SESSION_VAR') {
+    const tenant = req.tokens?.tenant;
+    if (!tenant) {
+      return {
+        error: {
+          status: HTTP_STATUS.UNAUTHORIZED,
+          body: { error: 'Unauthorized', message: 'Tenant context required for session-variable isolation.' }
+        }
+      };
+    }
+    const keyLit = sqlStringLiteral(HYBRID_CONFIG.sessionVarName);
+    const tenantLit = sqlStringLiteral(tenant);
+    prefix =
+      `SELECT SET_SYS_CONTEXT('SNOWFLAKE$SESSION_ATTRIBUTES', ${keyLit}, ${tenantLit}) ->> `;
+  }
+
+  return { statement: `${prefix}${aggregateSql}` };
+};
+
+const mapSnowflakeRowsToSales = (payload) =>
+  (payload.data || []).map((row) => ({
+    storeId: Number(row[0]),
+    total: Number(row[1])
+  }));
 
 // ============================================================================
 // Authentication Middleware
@@ -489,6 +574,83 @@ const chatRouter = createChatRouter({
     console.error('Chat server error:', error.message);
   }
 });
+
+/**
+ * POST /api/sales-by-store — total quantity per store from ORDERS (SQL API, Option D: inline literals).
+ * Register before the chat router so this route is matched first.
+ */
+const handleSalesByStore = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body || {};
+    const start = parseIsoDateStrict(startDate);
+    const end = parseIsoDateStrict(endDate);
+    if (!start || !end) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        error: 'Bad request',
+        message: 'startDate and endDate are required (YYYY-MM-DD).'
+      });
+    }
+    if (start > end) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        error: 'Bad request',
+        message: 'startDate must be on or before endDate.'
+      });
+    }
+
+    const built = buildSalesByStoreStatement(req, start, end);
+    if (built.error) {
+      return res.status(built.error.status).json(built.error.body);
+    }
+
+    const token = getSnowflakeAuthToken(req);
+    if (!token) {
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Unauthorized', message: 'No Snowflake credentials.' });
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
+    if (AUTH_MODE === 'HYBRID' && HYBRID_CONFIG.isolationMode === 'ROLE' && req.tokens?.role) {
+      headers['X-Snowflake-Role'] = req.tokens.role;
+    }
+
+    const body = {
+      statement: built.statement,
+      timeout: 120,
+      database: SNOWFLAKE_CONFIG.database,
+      schema: SNOWFLAKE_CONFIG.schema
+    };
+    const warehouse = getWarehouseForSqlApi();
+    if (warehouse) {
+      body.warehouse = warehouse;
+    }
+
+    const sfResp = await fetch(`https://${SNOWFLAKE_CONFIG.host}/api/v2/statements`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    });
+
+    const sfJson = await sfResp.json().catch(() => ({}));
+    if (!sfResp.ok) {
+      console.error('Snowflake SQL API error:', sfResp.status, sfJson);
+      return res.status(502).json({
+        error: 'Snowflake query failed',
+        message: sfJson.message || String(sfResp.status)
+      });
+    }
+
+    const rows = mapSnowflakeRowsToSales(sfJson);
+    res.json({ rows });
+  } catch (err) {
+    console.error('sales-by-store:', err);
+    res.status(500).json({ error: sanitizeError(err) });
+  }
+};
+
+app.post('/api/sales-by-store', authenticate, refreshTokenIfNeeded, handleSalesByStore);
 
 // Mount chat router with authentication middleware
 app.use('/api', authenticate, refreshTokenIfNeeded, chatRouter);
@@ -883,6 +1045,7 @@ app.use((err, req, res, next) => {
     console.log('  GET  /api/threads/:id                 - Get thread history');
     console.log('  POST /api/threads/:id                 - Update thread name');
     console.log('  DELETE /api/threads/:id               - Delete thread');
+    console.log('  POST /api/sales-by-store              - Store sales totals (chart)');
     console.log('\n✨ Ready to accept requests!\n');
   });
 })();
