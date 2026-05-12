@@ -1,0 +1,23 @@
+{
+  "name": "@cortex-chat/server",
+  "version": "1.0.0",
+  "description": "Drop-in Express router for Snowflake Cortex Agents API — agents, threads, and streaming",
+  "main": "chatServer.js",
+  "files": [
+    "chatServer.js",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "express": "^4.22.1"
+  },
+  "keywords": [
+    "snowflake",
+    "cortex",
+    "agents",
+    "express",
+    "chat",
+    "backend"
+  ],
+  "author": "",
+  "license": "MIT"
+}

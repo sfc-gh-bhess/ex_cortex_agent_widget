@@ -1,81 +1,42 @@
 # Dependencies
-/node_modules/
-/.pnp
-.pnp.js
-jspm_packages/
+node_modules/
 
-# Testing
-/coverage/
-*.lcov
-.nyc_output/
-
-# Production builds
-/build/
-/dist/
+# Build outputs
+build/
+dist/
 *.tgz
 
-# Build caches
-.cache/
-.parcel-cache/
-
-# Framework-specific build outputs
-.next/
-.nuxt/
-.out/
-.storybook-out/
-
-# Environment variables
+# Environment variables (contain secrets)
 .env
 .env.*
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.test
-.env.backup*
+!.env.example
+!env.backend.example
+!env.frontend.example
 
 # Logs
+*.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
 
-# Runtime data
-pids/
-*.pid
-*.seed
-*.pid.lock
-
-# npm & Yarn
-.npm/
-.yarn-integrity
-.node_repl_history
-
-# Temporary folders
-tmp/
-temp/
-
-# Editor directories and files
+# Editor
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS generated files
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
-package-lock.json
-.DS_Store
 
+# Lock files in sub-packages (root has none)
+package-lock.json
+
+# Working docs
 summary_docs/
+
+# Stray data files
 multisales_agent.json
 multisales_agent_v1.json

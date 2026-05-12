@@ -1,0 +1,51 @@
+{
+  "name": "@cortex-chat/interface",
+  "version": "1.0.0",
+  "description": "Embeddable chat interface component powered by Snowflake Cortex Agents REST API",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "peerDependencies": {
+    "@emotion/react": "^11.0.0",
+    "@emotion/styled": "^11.0.0",
+    "@mui/icons-material": "^7.0.0",
+    "@mui/material": "^7.0.0",
+    "@mui/system": "^7.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "dependencies": {
+    "react-markdown": "^9.1.0",
+    "recharts": "^3.2.1",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "typescript": "^4.9.5"
+  },
+  "keywords": [
+    "chat",
+    "chatbot",
+    "react",
+    "material-ui",
+    "snowflake",
+    "cortex",
+    "agents",
+    "embeddable",
+    "component"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+
