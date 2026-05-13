@@ -18,7 +18,7 @@ This project supports three access modes to cover the most common patterns:
 | **Per-user access (OAuth/SSO)** | Each user accesses Snowflake as themselves | Organizations where users already have Snowflake accounts |
 | **Multi-tenant (Hybrid)** | Each user is mapped to a tenant and only sees that tenant's data | SaaS platforms, franchise portals, partner dashboards |
 
-The Hybrid mode itself comes in two flavors — **Session Variable** (row-level filtering via Row Access Policies) and **Role-Based** (a dedicated Snowflake role per tenant). We'll focus on the Session Variable approach for simplicity, but the repository supports both.
+The Hybrid mode itself comes in two flavors — **Session Attribute** (row-level filtering via Row Access Policies) and **Role-Based** (a dedicated Snowflake role per tenant). We'll focus on the Session Attribute approach for simplicity, but the repository supports both.
 
 ## Architecture at a Glance
 
@@ -43,17 +43,17 @@ The overall design is a classic three-tier web application: a React frontend tal
 │  Backend (Express)                                             │
 │                                                                │
 │  ┌──────────────┐    ┌──────────────────────────────────────┐  │
-│  │  Your server  │───▶│  chatServer.js (createChatRouter)    │  │
-│  │  Auth, CORS,  │    │  Agents, Threads, Streaming          │  │
-│  │  Sessions     │    └───────────────┬──────────────────────┘  │
-│  └──────────────┘                     │                         │
-│  (cortex-chat-server)                 │                         │
-└───────────────────────────────────────┼─────────────────────────┘
-                                        │  HTTPS
-                                        ▼
+│  │  Your server │───▶│  chatServer.js (createChatRouter)    │  │
+│  │  Auth, CORS, │    │  Agents, Threads, Streaming          │  │
+│  │  Sessions    │    └───────────────┬──────────────────────┘  │
+│  └──────────────┘                    │                         │
+│  (cortex-chat-server)                │                         │
+└──────────────────────────────────────┼─────────────────────────┘
+                                       │  HTTPS
+                                       ▼
                              ┌──────────────────────┐
-                             │  Snowflake            │
-                             │  Cortex Agents API    │
+                             │  Snowflake           │
+                             │  Cortex Agents API   │
                              └──────────────────────┘
 ```
 
@@ -89,7 +89,7 @@ app.use('/api', chatRouter);
 app.listen(3001);
 ```
 
-That's the simplest version — a shared PAT for all users. For multi-tenant use cases, you'd also supply `getSessionVariables` (to inject a tenant identifier as a session variable) or `getSnowflakeRole` (to set a per-tenant Snowflake role). The configuration object also supports `originApplication` for thread tagging, `getOriginApplication` for per-user thread scoping, and an `onError` callback.
+That's the simplest version — a shared PAT for all users. For multi-tenant use cases, you'd also supply `getSessionVariables` (to inject a tenant identifier as a session attribute) or `getSnowflakeRole` (to set a per-tenant Snowflake role). The configuration object also supports `originApplication` for thread tagging, `getOriginApplication` for per-user thread scoping, and an `onError` callback.
 
 > **Not using Express?** The backend component is intentionally small and self-contained. If you're on a different framework (Flask, FastAPI, Spring, etc.), you can port the logic from `chatServer.js` — it's essentially a set of proxy endpoints that forward requests to the Snowflake REST API with the right headers and handle SSE streaming back to the client.
 
@@ -168,18 +168,18 @@ The Notebook covers three modes of data isolation:
 
 - **3a: OAUTH (SSO)** — Users authenticate directly with Snowflake. The Row Access Policy checks `CURRENT_USER()`.
 - **3b: HYBRID-ROLE** — The app maps each tenant to a Snowflake role. The RAP checks `CURRENT_ROLE()`.
-- **3c: HYBRID-SESSION** — The app passes a session variable. The RAP checks `SYS_CONTEXT('SNOWFLAKE$SESSION_ATTRIBUTES', 'TENANT')`.
+- **3c: HYBRID-SESSION** — The app passes a session attribute. The RAP checks `SYS_CONTEXT('SNOWFLAKE$SESSION_ATTRIBUTES', 'TENANT')`.
 
 You can choose whichever mode fits your use case. For the rest of this walkthrough, we'll focus on **HYBRID-SESSION** (mode 3c) since it's the most common pattern for SaaS-style multi-tenant applications and doesn't require creating Snowflake users or roles per tenant.
 
-In the Session Variable approach, the Notebook creates:
+In the Session Attribute approach, the Notebook creates:
 
 - An **entitlement table** (`ENTITLEMENT_VAR`) that maps tenant keys (like `Alice`) to tenant names (like `Alices Restaurant`).
 - A **Row Access Policy** (`RAP_ENTITLEMENT_VAR`) on the entitlement table that filters rows based on the value of `SYS_CONTEXT('SNOWFLAKE$SESSION_ATTRIBUTES', 'TENANT')`.
 - A **memoizable UDF** (`TENANTS_VAR()`) that builds an array of allowed tenant names.
 - A **Row Access Policy** (`RAP_TENANT_VAR`) applied to the `ORDERS` and `ITEMS` tables, so that queries only return rows for tenants the current session is authorized to see.
 
-The beauty of this approach is that when the backend sends a request to the Cortex Agent with a session variable like `SET_SYS_CONTEXT('SNOWFLAKE$SESSION_ATTRIBUTES', 'TENANT', 'Alice')`, Snowflake's Row Access Policies automatically filter the data — the agent only ever "sees" Alice's Restaurant data, no matter what SQL it generates.
+The beauty of this approach is that when the backend sends a request to the Cortex Agent with a session attribute like `SET_SYS_CONTEXT('SNOWFLAKE$SESSION_ATTRIBUTES', 'TENANT', 'Alice')`, Snowflake's Row Access Policies automatically filter the data — the agent only ever "sees" Alice's Restaurant data, no matter what SQL it generates.
 
 ## Configuring the Identity Provider
 
@@ -210,7 +210,7 @@ For the Hybrid mode specifically, you also need to:
 ### Installation
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/sfc-gh-bhess/ex_cortex_agent_widget.git
 cd ex_cortex_agent_widget
 ./setup.sh
 ```
@@ -219,7 +219,7 @@ The `setup.sh` script installs dependencies for the chat interface component, th
 
 ### Configuration for HYBRID-SESSION
 
-The sample app includes **template environment files** to make configuration easier. For the Session Variable mode, start with these:
+The sample app includes **template environment files** to make configuration easier. For the Session Attribute mode, start with these:
 
 ```bash
 cd sample-app
@@ -296,7 +296,7 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 2. **Chat** — Once logged in, you'll see a floating chat button in the corner. Click it to open the chat interface. The agent is already configured and ready to go.
 
-3. **Ask questions** — Try something like *"Which chicken sandwich sold the most in May 2024?"* The Cortex Agent will interpret your question, generate SQL against the semantic view, and return an answer — all scoped to your tenant's data thanks to the session variable and Row Access Policy.
+3. **Ask questions** — Try something like *"Which chicken sandwich sold the most in May 2024?"* The Cortex Agent will interpret your question, generate SQL against the semantic view, and return an answer — all scoped to your tenant's data thanks to the session attribute and Row Access Policy.
 
 4. **Thread history** — Your conversations are saved as threads. Click the history icon in the chat to revisit previous conversations or start a new one.
 
@@ -304,7 +304,7 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 ## Start Building
 
-The components in this repository are designed to get you from zero to a working "talk to your data" experience as quickly as possible. The frontend component handles the chat UX — streaming responses, thread management, agent selection, chart rendering. The backend component handles the Snowflake API plumbing — authentication, session variables, role mapping, SSE streaming. All you need to bring is your data, a Cortex Agent, and an idea.
+The components in this repository are designed to get you from zero to a working "talk to your data" experience as quickly as possible. The frontend component handles the chat UX — streaming responses, thread management, agent selection, chart rendering. The backend component handles the Snowflake API plumbing — authentication, session attributes, role mapping, SSE streaming. All you need to bring is your data, a Cortex Agent, and an idea.
 
 Clone the repo, run the Notebook, configure your IdP, and you'll have a working multi-tenant conversational data app in an afternoon. Then take the components and drop them into your own application.
 

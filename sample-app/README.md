@@ -229,7 +229,7 @@ sample-app/
 ├── .env                     Backend config (gitignored)
 ├── .env.local               Frontend config (gitignored)
 ├── package.json
-├── vite.config.ts           Vite build configuration
+├── vite.config.mts          Vite build configuration
 ├── tsconfig.json
 ├── index.html               App entry point (served by Vite)
 ├── public/                  Static assets (favicon, images)
