@@ -44,9 +44,12 @@ cp env.frontend.example .env.local
 >
 > | Mode | Backend | Frontend |
 > |------|---------|----------|
+> | Shared (PAT) | `cp env.backend.shared .env` | `cp env.frontend.shared .env.local` |
 > | SSO (OAuth) | `cp env.backend.sso .env` | `cp env.frontend.sso .env.local` |
-> | Hybrid — Session Variable | `cp env.backend.var .env` | `cp env.frontend.var .env.local` |
+> | Hybrid — Session Attribute | `cp env.backend.var .env` | `cp env.frontend.var .env.local` |
 > | Hybrid — Role-Based | `cp env.backend.role .env` | `cp env.frontend.role .env.local` |
+>
+> **IdP login but one Snowflake PAT (no tenant isolation):** use the Hybrid Session Attribute row above (`env.backend.var` / `env.frontend.var`), then follow [IdP login with shared PAT (no tenant isolation)](#idp-login-with-shared-pat-no-tenant-isolation).
 >
 > The `env.backend.example` / `env.frontend.example` files document all options across all modes.
 
@@ -102,11 +105,22 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Mode | Backend `AUTH_MODE` | Frontend `VITE_AUTH_MODE` | Description |
 |------|--------------------|-----------------------------|-------------|
-| **PAT** | `PAT` | `PAT` | Shared Snowflake PAT. No login page. |
+| **PAT** | `PAT` | `PAT` | Shared Snowflake PAT. No login page. See `env.backend.shared` / `env.frontend.shared`. |
 | **OAuth** | `OAUTH` | `OAUTH` | Per-user Snowflake tokens via IdP. |
-| **Hybrid** | `HYBRID` | `OAUTH` | Shared PAT + IdP tenant claim as session variable. |
+| **Hybrid** | `HYBRID` | `OAUTH` | Shared PAT + IdP JWT claim injected as a session attribute (or role mapping). |
 
 For Hybrid mode, the frontend always uses `VITE_AUTH_MODE=OAUTH`. Additional backend variables are required — see `env.backend.example`.
+
+### IdP login with shared PAT (no tenant isolation)
+
+If you want **users to sign in with an IdP** before using the app, but **all Snowflake / Cortex calls should use the same service PAT** (no per-user Snowflake tokens, and no row-level tenant isolation in Snowflake), use **Hybrid mode** with the Session Attribute templates: copy **`env.backend.var`** and **`env.frontend.var`**, then adjust:
+
+- Set **`CLAIM_KEY=sub`** so the backend always receives a value from the OIDC `id_token` (`sub` is standard and does not require custom IdP claims). Other registered claims work if they are always present on the tokens your backend validates.
+- Set **`SESSION_VAR_NAME`** to a name that your databases **do not** read in Row Access Policies, views, or other logic. The sample app still sends that session attribute on agent requests; if nothing in Snowflake enforces on it, **effective data access is the PAT user’s grants for every logged-in user**.
+
+Do **not** pair an OAuth frontend template with **`AUTH_MODE=PAT`** (`env.backend.shared`): the backend will not expose `/auth/exchange`, and auth modes will disagree. This “gated app + shared PAT” pattern is **Hybrid**, not PAT.
+
+The IdP controls **who may use the application**; it does not issue per-user Snowflake credentials in this variant. Treat IdP membership, network access, and the PAT’s Snowflake privileges as your security boundary.
 
 ## Identity Provider Configuration
 
@@ -169,16 +183,18 @@ In Hybrid mode, the IdP is used **only for application authentication and tenant
 
 Set `VITE_OAUTH_SCOPE=openid profile email` on the frontend. The `openid` scope is required so the IdP returns an `id_token` — a signed JWT that the backend validates to extract tenant and user information.
 
-**Custom claim — tenant identifier:**
+**Claim used as the “tenant” value (`CLAIM_KEY`):**
 
-Add a custom claim to the `id_token` (or `access_token`) that identifies the tenant for each user. The claim name must match `CLAIM_KEY` in the backend config (default: `tenant`).
+For **multi-tenant** isolation, add a custom claim (e.g. `tenant`) to the `id_token` (or `access_token`) and set `CLAIM_KEY` to match (default in templates: `tenant`).
+
+For **IdP login with shared Snowflake only** (no isolation), use a claim that is always present without custom setup — typically **`CLAIM_KEY=sub`**. See [IdP login with shared PAT (no tenant isolation)](#idp-login-with-shared-pat-no-tenant-isolation).
 
 | IdP | How to add a custom claim |
 |-----|--------------------------|
 | Okta | Security > API > Authorization Servers > Claims > Add Claim |
 | Auth0 | Actions > Flows > Login > Add Action that sets `api.idToken.setCustomClaim('tenant', ...)` |
 
-The claim value should match the tenant identifiers used in your data isolation strategy — for example, the `tenant_key` values in your `TENANT_ROLES` table (Role mode) or the values your Row Access Policy checks (Session Variable mode).
+The claim value should match the tenant identifiers used in your data isolation strategy — for example, the `tenant_key` values in your `TENANT_ROLES` table (Role mode) or the values your Row Access Policy checks (Session Attribute mode).
 
 **User identifier claim:**
 
@@ -186,7 +202,7 @@ The JWT must contain a claim that uniquely identifies the user. By default, the 
 
 **Token format:**
 
-At least one of the `id_token` or `access_token` must be a JWT containing the tenant claim. The backend tries both tokens during validation. Most IdPs return a JWT `id_token` when the `openid` scope is requested.
+At least one of the `id_token` or `access_token` must be a JWT that contains **the claim named by `CLAIM_KEY`** (for example `tenant` or `sub`). The backend tries both tokens during validation. Most IdPs return a JWT `id_token` when the `openid` scope is requested.
 
 > *Auth0 note:* By default, Auth0 returns an opaque `access_token`. The `id_token` is always a JWT and is usually sufficient for Hybrid mode. To also receive a JWT `access_token`, set `VITE_OAUTH_AUDIENCE` on the frontend.
 
@@ -202,7 +218,7 @@ At least one of the `id_token` or `access_token` must be a JWT containing the te
 
 Both Hybrid isolation modes use the same IdP setup described above. The difference is entirely on the backend and Snowflake side:
 
-- **SESSION_VAR** — The tenant claim value is passed as a session variable to the Cortex Agent for use with Snowflake Row Access Policies. See `env.backend.var`.
+- **SESSION_VAR** — The tenant claim value is passed as a session attribute to the Cortex Agent for use with Snowflake Row Access Policies. See `env.backend.var`.
 - **ROLE** — The tenant claim value is mapped to a Snowflake role via a lookup table and set via the `X-Snowflake-Role` header. See `env.backend.role`.
 
 ## npm Scripts
@@ -219,12 +235,14 @@ Both Hybrid isolation modes use the same IdP setup described above. The differen
 ```
 sample-app/
 ├── env.backend.example      Backend configuration template (all modes)
+├── env.backend.shared       Backend template — Shared access (PAT) mode
 ├── env.backend.sso          Backend template — SSO (OAuth) mode
-├── env.backend.var          Backend template — Hybrid Session Variable mode
+├── env.backend.var          Backend template — Hybrid Session Attribute mode
 ├── env.backend.role         Backend template — Hybrid Role mode
 ├── env.frontend.example     Frontend configuration template (all modes)
+├── env.frontend.shared      Frontend template — Shared access (PAT) mode
 ├── env.frontend.sso         Frontend template — SSO (OAuth) mode
-├── env.frontend.var         Frontend template — Hybrid Session Variable mode
+├── env.frontend.var         Frontend template — Hybrid Session Attribute mode
 ├── env.frontend.role        Frontend template — Hybrid Role mode
 ├── .env                     Backend config (gitignored)
 ├── .env.local               Frontend config (gitignored)

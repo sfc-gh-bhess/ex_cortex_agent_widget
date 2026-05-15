@@ -74,16 +74,16 @@ The sample backend supports three authentication modes, selected via the `AUTH_M
 |------|---------------|-----------|----------|
 | **PAT** | Shared Personal Access Token | None (open access) | Prototypes, demos, internal tools |
 | **OAUTH** | Per-user token from IdP | OAuth / OIDC login | Production apps with per-user Snowflake access |
-| **HYBRID** | Shared service PAT | OAuth / OIDC login | Multi-tenant apps with per-tenant data isolation |
+| **HYBRID** | Shared service PAT | OAuth / OIDC login | Multi-tenant isolation, or IdP-gated apps that still use one PAT in Snowflake |
 
 **PAT** — All API calls use a single Snowflake PAT stored on the server. No login page.
 
 **OAuth** — Users authenticate with an external Identity Provider (Okta, Auth0, etc.). Each user gets their own Snowflake session.
 
-**Hybrid** — Users authenticate via an IdP, but Snowflake API calls use a shared service PAT. The backend validates the IdP JWT and extracts a configured claim (e.g., `tenant`). Tenant data isolation is controlled by `TENANT_ISOLATION_MODE`:
+**Hybrid** — Users authenticate via an IdP, but Snowflake API calls use a shared service PAT. The backend validates the IdP JWT and reads `CLAIM_KEY` from the token. Tenant data isolation is controlled by `TENANT_ISOLATION_MODE`:
 
-- **SESSION_VAR** (default) — The tenant value is passed to the Cortex Agent as a session variable, used with Snowflake Row Access Policies for row-level data filtering.
-- **ROLE** — The tenant value is mapped to a Snowflake role via a lookup table (`TENANT_ROLE_TABLE`) and set via the `X-Snowflake-Role` header on all Snowflake API calls. Data access is controlled by standard Snowflake RBAC grants. New tenants can be onboarded by inserting a row in the mapping table — no server restart required.
+- **SESSION_VAR** (default) — The claim value is passed to the Cortex Agent as a session attribute (for example for Row Access Policies). For **IdP login with a single shared Snowflake identity** (no tenant isolation), use `env.backend.var` / `env.frontend.var` with `CLAIM_KEY=sub` and a `SESSION_VAR_NAME` that Snowflake never enforces on — see [sample-app README](sample-app/README.md#idp-login-with-shared-pat-no-tenant-isolation).
+- **ROLE** — The claim value is mapped to a Snowflake role via a lookup table (`TENANT_ROLE_TABLE`) and set via the `X-Snowflake-Role` header on all Snowflake API calls. Data access is controlled by standard Snowflake RBAC grants. New tenants can be onboarded by inserting a row in the mapping table — no server restart required.
 
 > For both OAuth and Hybrid modes, the frontend uses `VITE_AUTH_MODE=OAUTH`. The distinction is entirely on the backend.
 
@@ -121,9 +121,12 @@ cp env.frontend.example .env.local
 >
 > | Mode | Backend | Frontend |
 > |------|---------|----------|
+> | Shared (PAT) | `cp env.backend.shared .env` | `cp env.frontend.shared .env.local` |
 > | SSO (OAuth) | `cp env.backend.sso .env` | `cp env.frontend.sso .env.local` |
-> | Hybrid — Session Variable | `cp env.backend.var .env` | `cp env.frontend.var .env.local` |
+> | Hybrid — Session Attribute | `cp env.backend.var .env` | `cp env.frontend.var .env.local` |
 > | Hybrid — Role-Based | `cp env.backend.role .env` | `cp env.frontend.role .env.local` |
+>
+> **IdP login but one Snowflake PAT (no tenant isolation):** use the Hybrid Session Attribute row above, then see [sample-app README — IdP login with shared PAT](sample-app/README.md#idp-login-with-shared-pat-no-tenant-isolation).
 >
 > The `env.backend.example` / `env.frontend.example` files document all options across all modes.
 
