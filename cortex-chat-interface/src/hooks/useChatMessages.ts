@@ -7,7 +7,7 @@ import { useState, useCallback, useRef } from 'react';
 import { ChatMessage } from '../types/chat';
 import { ChartContent } from '../types/chart';
 import { useConfig } from '../contexts/ConfigContext';
-import { extractSqlQuery, extractVerificationInfo } from '../utils/chatUtils';
+import { extractSqlQuery, extractVerificationInfo, parseJsonPreserveLargeInts } from '../utils/chatUtils';
 import { ERROR_TEXT, API_DEFAULTS, getApiStatusMessage } from '../constants/textConstants';
 
 const MAX_MESSAGES = 100;
@@ -18,9 +18,10 @@ export const useChatMessages = (selectedAgent: string) => {
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   
-  // Threading support: track thread ID and parent message ID
+  // Threading support: track thread ID and parent message ID.
+  // Parent IDs are strings — Snowflake message IDs exceed Number.MAX_SAFE_INTEGER.
   const threadIdRef = useRef<string | null>(null);
-  const parentMessageIdRef = useRef<number>(0);
+  const parentMessageIdRef = useRef<string>('0');
   
   // Helper to create a new thread
   const createNewThread = useCallback(async (): Promise<string | null> => {
@@ -41,8 +42,8 @@ export const useChatMessages = (selectedAgent: string) => {
       
       // Snowflake returns a JSON object with thread metadata
       const threadData = await response.json();
-      // Extract and return the thread_id
-      return String(threadData.thread_id);
+      // Extract and return the thread_id (keep as string for precision)
+      return threadData.thread_id != null ? String(threadData.thread_id) : null;
     } catch (error) {
       console.error('Error creating thread:', error);
       return null;
@@ -158,11 +159,13 @@ export const useChatMessages = (selectedAgent: string) => {
       // Update thread state
       threadIdRef.current = threadId;
       
-      // Set parent message ID to the last message's message_id (after sorting)
-      if (sortedMessages.length > 0) {
-        const lastMessage = sortedMessages[sortedMessages.length - 1];
-        parentMessageIdRef.current = lastMessage.message_id;
-      }
+      // Continue from the latest assistant message (required by Cortex Threads API)
+      const lastAssistant = [...sortedMessages].reverse().find(
+        (msg: any) => msg.role === 'assistant' && msg.message_id != null
+      );
+      parentMessageIdRef.current = lastAssistant
+        ? String(lastAssistant.message_id)
+        : '0';
       
       return true;
       
@@ -222,7 +225,7 @@ export const useChatMessages = (selectedAgent: string) => {
     abortControllerRef.current = abortController;
 
     try {
-      // Use current parent message ID (from previous metadata response)
+      // Use current parent message ID (from previous assistant metadata)
       const currentParentMessageId = parentMessageIdRef.current;
       
       // Build request body with thread info
@@ -244,15 +247,12 @@ export const useChatMessages = (selectedAgent: string) => {
         stream: true
       };
 
-      // Add threading fields if we have a thread ID
+      // Add threading fields if we have a thread ID.
+      // Send IDs as strings so Express/JSON.parse cannot round them; the
+      // backend re-emits them as raw JSON numbers for Snowflake.
       if (threadIdRef.current) {
-        const threadIdNum = parseInt(threadIdRef.current, 10);
-        if (!isNaN(threadIdNum)) {
-          requestBody.thread_id = threadIdNum;
-          requestBody.parent_message_id = currentParentMessageId;
-        } else {
-          console.warn(`Invalid thread_id: ${threadIdRef.current}, cannot parse as integer`);
-        }
+        requestBody.thread_id = threadIdRef.current;
+        requestBody.parent_message_id = currentParentMessageId;
       } else {
         console.log('No thread_id available, sending message without threading');
       }
@@ -319,7 +319,8 @@ export const useChatMessages = (selectedAgent: string) => {
             if (!dataStr || dataStr === '[DONE]') continue;
 
             try {
-              const data = JSON.parse(dataStr);
+              // Preserve Snowflake message IDs that exceed Number.MAX_SAFE_INTEGER
+              const data = parseJsonPreserveLargeInts(dataStr);
 
               if (currentEvent === 'response.text.delta' && data.text) {
                 assistantText += data.text;
@@ -499,11 +500,10 @@ export const useChatMessages = (selectedAgent: string) => {
                   }
                 }
               } else if (currentEvent === 'metadata') {
-                // Handle metadata event - contains message_id for threading
-                if (data && data.metadata && data.metadata.message_id) {
-                  const messageId = data.metadata.message_id;
-                  // Store this message_id to use as parent_message_id for the next message
-                  parentMessageIdRef.current = messageId;
+                // Cortex streams metadata for both user and assistant messages.
+                // Only the assistant message_id may be used as parent_message_id.
+                if (data?.metadata?.role === 'assistant' && data.metadata.message_id != null) {
+                  parentMessageIdRef.current = String(data.metadata.message_id);
                 }
               }
             } catch (parseError) {
@@ -598,7 +598,7 @@ export const useChatMessages = (selectedAgent: string) => {
     
     // Reset threading: clear thread ID (new one will be created) and reset parent message ID
     threadIdRef.current = null;
-    parentMessageIdRef.current = 0;
+    parentMessageIdRef.current = '0';
   }, [isLoading]);
 
   return {
