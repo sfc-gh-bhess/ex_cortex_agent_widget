@@ -62,6 +62,61 @@ const HTTP_STATUS = {
 
 const MAX_AGENT_NAME_LENGTH = 100;
 
+// Snowflake message IDs exceed Number.MAX_SAFE_INTEGER; JSON.parse rounds them
+// (e.g. 26181583765602838 → 26181583765602840), which breaks parent_message_id.
+const SNOWFLAKE_ID_KEYS = new Set([
+  'thread_id',
+  'message_id',
+  'parent_message_id',
+  'parent_id',
+  'last_message_id',
+  'artifact_reference_message_id'
+]);
+
+/**
+ * Parse JSON while preserving 16+ digit integers as strings.
+ * @param {string} text
+ * @returns {any}
+ */
+function parseJsonPreserveLargeInts(text) {
+  return JSON.parse(
+    String(text).replace(/([\[:,\s])(-?\d{16,})(?=\s*[,\]}])/g, '$1"$2"')
+  );
+}
+
+/**
+ * Serialize a body for the Snowflake API, emitting ID fields as raw JSON numbers
+ * even when stored as strings in JS (avoids precision loss and quoted strings).
+ * @param {any} value
+ * @returns {string}
+ */
+function stringifySnowflakeJson(value) {
+  return JSON.stringify(value, (key, v) => {
+    if (
+      SNOWFLAKE_ID_KEYS.has(key) &&
+      (typeof v === 'string' || typeof v === 'number') &&
+      /^-?\d+$/.test(String(v))
+    ) {
+      return `__SFINT__${v}__`;
+    }
+    if (typeof v === 'string' && /^-?\d{16,}$/.test(v)) {
+      return `__SFINT__${v}__`;
+    }
+    return v;
+  }).replace(/"__SFINT__(-?\d+)__"/g, '$1');
+}
+
+/**
+ * Parse a Snowflake fetch Response body with large-int safety.
+ * @param {Response} response
+ * @returns {Promise<any>}
+ */
+async function parseSnowflakeResponse(response) {
+  const text = await response.text();
+  if (!text) return null;
+  return parseJsonPreserveLargeInts(text);
+}
+
 /**
  * Create a configured chat router
  * @param {Object} config - Configuration object
@@ -274,7 +329,8 @@ function createChatRouter(config) {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: getSnowflakeAuthHeaders(req),
-        body: JSON.stringify(requestBody)
+        // Emit thread/message IDs as raw JSON numbers (may arrive as strings from the client)
+        body: stringifySnowflakeJson(requestBody)
       });
       
       if (!response.ok) {
@@ -333,7 +389,7 @@ function createChatRouter(config) {
         pump();
       } else {
         // Non-streaming response
-        const data = await response.json();
+        const data = await parseSnowflakeResponse(response);
         console.log('✅ Received non-streaming response from agent');
         res.json(data);
       }
@@ -373,7 +429,7 @@ function createChatRouter(config) {
         });
       }
       
-      const threadData = await response.json();
+      const threadData = await parseSnowflakeResponse(response);
       console.log(`Thread created: ${threadData.thread_id}`);
       
       res.json(threadData);
@@ -409,7 +465,7 @@ function createChatRouter(config) {
         });
       }
       
-      const threadsArray = await response.json();
+      const threadsArray = await parseSnowflakeResponse(response);
       console.log(`Retrieved ${threadsArray?.length || 0} threads`);
       
       res.json(threadsArray);
@@ -442,7 +498,7 @@ function createChatRouter(config) {
         });
       }
       
-      const threadData = await response.json();
+      const threadData = await parseSnowflakeResponse(response);
       console.log(`Retrieved thread ${threadId} with ${threadData.messages?.length || 0} messages`);
       
       res.json(threadData);

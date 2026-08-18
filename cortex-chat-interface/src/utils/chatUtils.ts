@@ -110,6 +110,17 @@ export const getTimeBasedGreeting = (): string => {
 };
 
 /**
+ * Snowflake message/thread IDs can exceed Number.MAX_SAFE_INTEGER.
+ * JSON.parse would round them (e.g. …2838 → …2840), breaking parent_message_id.
+ * Quote 16+ digit integers before parsing so they stay exact strings.
+ */
+export const parseJsonPreserveLargeInts = (text: string): any => {
+  return JSON.parse(
+    String(text).replace(/([\[:,\s])(-?\d{16,})(?=\s*[,\]}])/g, '$1"$2"')
+  );
+};
+
+/**
  * Format timestamp for display
  */
 export const formatTimestamp = (date: Date): string => {
